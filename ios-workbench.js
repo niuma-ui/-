@@ -3,7 +3,7 @@
 
   var sidebar = document.getElementById('sidebar');
   var menuButton = document.getElementById('menuButton');
-  var knowledgeApiRoot = window.location.protocol === 'file:' ? 'http://127.0.0.1:4173' : '';
+  var knowledgeApiRoot = window.location.protocol === 'file:' ? 'http://127.0.0.1:4174' : '';
   window.knowledgeApiRoot = knowledgeApiRoot;
 
   var themeStorageKey = 'design-knowledge-theme';

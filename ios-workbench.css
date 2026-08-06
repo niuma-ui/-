@@ -233,7 +233,7 @@ svg { display: block; fill: none; stroke: currentcolor; stroke-linecap: round; s
 .message-sources a:active { transform: scale(0.97); }
 .assistant-typing { display: none; padding: 3px 1px 8px; color: var(--muted); font-size: 10px; }
 .assistant-typing.show { display: block; }
-.assistant-input { display: grid; grid-template-columns: minmax(0px, 1fr) 37px; gap: 7px; padding-top: 10px; border-top: 1px solid var(--line); }
+.assistant-input { width: 100%; min-width: 0; display: grid; grid-template-columns: minmax(0px, 1fr) 40px; gap: 7px; padding-top: 10px; border-top: 1px solid var(--line); }
 .assistant-input input { min-width: 0px; height: 37px; padding: 0px 10px; border: 0px; border-radius: 9px; outline: 0px; color: var(--ink); background: rgba(255, 255, 255, 0.76); font-size: 12px; }
 .assistant-input input:focus { box-shadow: rgba(8, 125, 241, 0.52) 0px 0px 0px 2px inset; }
 .send-button { width: 37px; height: 37px; display: grid; place-items: center; padding: 0px; border: 0px; border-radius: 10px; color: rgb(255, 255, 255); background: rgba(8, 112, 218, 0.92); box-shadow: rgba(8, 83, 168, 0.18) 0px 7px 16px, rgba(255, 255, 255, 0.28) 0px 1px 0px inset; transition: transform 160ms var(--ease-out), background-color 150ms ease; }
