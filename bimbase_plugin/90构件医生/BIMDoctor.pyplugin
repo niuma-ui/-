@@ -20,6 +20,12 @@
             <Button name="诊断选中构件属性">
                 <command>诊断选中构件属性.py</command>
             </Button>
+            <Button name="启动实时桥接">
+                <command>启动实时桥接.py</command>
+            </Button>
+            <Button name="停止实时桥接">
+                <command>停止实时桥接.py</command>
+            </Button>
         </Panel>
     </Category>
 </BIMPyPlugin>

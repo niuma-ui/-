@@ -117,11 +117,23 @@ def detect_project_context(config):
     """Read the active .p3d identity; the file/project is compliance context, not the solid shape name."""
     title = ""
     try:
-        hwnd = ctypes.windll.user32.GetForegroundWindow()
-        size = ctypes.windll.user32.GetWindowTextLengthW(hwnd) + 1
-        buffer = ctypes.create_unicode_buffer(max(size, 2))
-        ctypes.windll.user32.GetWindowTextW(hwnd, buffer, len(buffer))
-        title = buffer.value
+        titles = []
+        callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def callback(hwnd, _):
+            size = ctypes.windll.user32.GetWindowTextLengthW(hwnd) + 1
+            buffer = ctypes.create_unicode_buffer(max(size, 2))
+            ctypes.windll.user32.GetWindowTextW(hwnd, buffer, len(buffer))
+            if buffer.value:
+                titles.append(buffer.value)
+            return True
+        ctypes.windll.user32.EnumWindows(callback_type(callback), 0)
+        title = next((item for item in titles if re.search(r"\.p3d\]", item, re.I)), "")
+        if not title:
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            size = ctypes.windll.user32.GetWindowTextLengthW(hwnd) + 1
+            buffer = ctypes.create_unicode_buffer(max(size, 2))
+            ctypes.windll.user32.GetWindowTextW(hwnd, buffer, len(buffer))
+            title = buffer.value
     except Exception:
         pass
     match = re.search(r"\[([^\[\]]+\.p3d)\]", title, re.I)
@@ -442,6 +454,11 @@ def send_job(config, components):
         client.request("POST", "/api/bim-doctor/jobs/%s/components" % job["id"], {"components": batch})
         print("已上传构件 %d/%d" % (min(start + batch_size, len(components)), len(components)))
     return client.request("POST", "/api/bim-doctor/jobs/%s/run" % job["id"], {})
+
+
+def send_heartbeat(config, payload):
+    client = ApiClient(config["serverUrl"], config.get("token", ""), config.get("timeout", 120))
+    return client.request("POST", "/api/bim-doctor/heartbeat", payload)
 
 
 def load_config(path):

@@ -346,6 +346,37 @@ async function handleStreamingQuery(request, response) {
   }
 }
 
+function doctorContextPrompt(snapshot, question) {
+  const project = snapshot.project || {};
+  const component = snapshot.component || {};
+  const result = snapshot.result || {};
+  const parameters = Object.entries(component.parameters || {}).map(([key, value]) => `${key}=${value}`).join('，');
+  const issues = (result.issues || []).map((issue) => `${issue.title || issue.ruleId}: 实际${issue.actual ?? '缺失'}，预期${issue.expected || ''}`).join('；');
+  return [
+    `BIMBase实时项目上下文：项目=${project.name || '未知'}，工程类型=${project.type || '未分类'}，专业=${project.discipline || '未填写'}，系统=${component.systemType || component.system || '未识别'}，整体组件=${component.assemblyType || component.assembly || '未识别'}`,
+    `当前构件：entityId=${component.entityId || '未选中'}，形状名称=${component.shapeName || component.name || '未知'}，语义类型=${component.semanticType || component.componentType || '未识别'}，参数=${parameters || '无'}`,
+    `机器规则结论：${result.status || 'NEED_RULE'}；${result.summary || '尚无已审核机器规则'}${issues ? `；问题=${issues}` : ''}`,
+    `用户问题：${question}`,
+    '请只依据检索到的规范正文回答；不要把形状名称当作规范类别。涉及是否合规时，先明确机器规则状态；NEED_RULE/NEED_DATA 不得回答为合格。'
+  ].join('\n');
+}
+
+function doctorContextTerms(snapshot) {
+  const project = snapshot.project || {};
+  const component = snapshot.component || {};
+  return [project.type, project.discipline, project.name, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType]
+    .map((value) => String(value || '').trim())
+    .filter((value) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别)/.test(value));
+}
+
+function complianceAnswer(snapshot) {
+  const result = snapshot.result || {};
+  if (result.status === 'PASS') return '基于当前已审核的机器规则，本次检查通过。仍应结合完整设计工况和规范原页进行最终复核。';
+  if (result.status === 'FAIL') return `本次检查不符合已审核规则：${(result.issues || []).filter((issue) => issue.status === 'FAIL').map((issue) => `${issue.title || issue.ruleId}，实际 ${issue.actual}，要求 ${issue.expected}`).join('；')}`;
+  if (result.status === 'NEED_DATA') return '当前缺少规则所需的项目或构件参数，无法判定是否合格。请先补齐结果中标记为 NEED_DATA 的字段。';
+  return '当前没有适用于该项目/整体组件的已审核机器规则，因此不能判断为合格或不合格。系统只能提供候选规范，待确认适用标准和条文后才能形成准确结论。';
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
@@ -366,7 +397,44 @@ const server = http.createServer(async (request, response) => {
       if (!requireBridgeAuth(request, response)) return;
       if (request.method === 'GET' && pathname === '/api/bim-doctor/status') {
         const rules = await bimDoctor.getRules();
-        json(response, 200, { ready: true, knowledgeReady: knowledge.ready, ruleCount: rules.filter((rule) => rule.enabled !== false).length });
+        json(response, 200, { ready: true, knowledgeReady: knowledge.ready, ruleCount: rules.filter((rule) => rule.enabled !== false).length, bridge: await bimDoctor.getBridgeState() });
+        return;
+      }
+      if (request.method === 'POST' && pathname === '/api/bim-doctor/heartbeat') {
+        json(response, 200, { bridge: await bimDoctor.updateBridgeState(await readJson(request, 128 * 1024)) });
+        return;
+      }
+      if (request.method === 'GET' && pathname === '/api/bim-doctor/snapshot') {
+        json(response, 200, await bimDoctor.latestSnapshot(url.searchParams.get('entityId') || ''));
+        return;
+      }
+      if (request.method === 'POST' && pathname === '/api/bim-doctor/ask') {
+        const body = await readJson(request, 256 * 1024);
+        const question = String(body.question || '').trim();
+        if (!question) throw new Error('question 不能为空');
+        const snapshot = body.jobId ? await bimDoctor.readJob(body.jobId).then(async (job) => {
+          const result = (job.results || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.results?.[0] || null;
+          const component = (job.components || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.components?.[0] || null;
+          return { bridge: await bimDoctor.getBridgeState(), job: bimDoctor.jobView(job), project: job.project, component, result };
+        }) : await bimDoctor.latestSnapshot(body.entityId || '');
+        const compliance = snapshot.result ? { status: snapshot.result.status, summary: snapshot.result.summary, issues: snapshot.result.issues || [] } : { status: 'NEED_RULE', summary: '暂无项目检查结果', issues: [] };
+        if (/(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
+          json(response, 200, { answer: complianceAnswer(snapshot), sources: snapshot.result?.sources || [], documents: [], suggestions: [], mode: 'rule-engine', compliance, snapshot });
+          return;
+        }
+        const terms = doctorContextTerms(snapshot);
+        if (!terms.length) {
+          json(response, 200, { answer: '尚未识别项目类型、专业、系统或整体组件，无法准确定位适用规范。请先通过实时桥接取得工程和组件语义；构件形状名称不作为规范分类依据。', sources: [], documents: [], suggestions: [], mode: 'context-required', compliance, snapshot });
+          return;
+        }
+        const probe = knowledge.search(`${terms.join(' ')} ${question}`, 8);
+        const relevant = probe.filter((source) => terms.some((term) => `${source.title || ''} ${source.text || ''}`.includes(term)));
+        if (!relevant.length) {
+          json(response, 200, { answer: `当前规范库中未检索到与“${terms.join('、')}”直接匹配的可靠条文，不能用其他专业规范替代判断。请补充对应专业规范后再审核。`, sources: [], documents: [], suggestions: [], mode: 'no-applicable-standard', compliance, snapshot });
+          return;
+        }
+        const result = await knowledge.answer(doctorContextPrompt(snapshot, question), { history: Array.isArray(body.history) ? body.history.slice(-5) : [] });
+        json(response, 200, { ...result, compliance, snapshot });
         return;
       }
       if (pathname === '/api/bim-doctor/rules' && request.method === 'GET') {

@@ -231,6 +231,11 @@
               <section class="doctor-results" aria-labelledby="doctorResultsTitle">
                 <div class="doctor-section-head"><h3 id="doctorResultsTitle">构件结果</h3><span id="doctorResultCount">未选择任务</span></div>
                 <div class="doctor-result-list" id="doctorResultList"><p class="doctor-empty">选择一项检查任务查看构件结论和规范依据。</p></div>
+                <div class="doctor-chat">
+                  <div class="doctor-section-head"><h3>询问规范助手</h3><span id="doctorAnswerStatus"></span></div>
+                  <div class="doctor-chat-row"><input id="doctorQuestion" type="text" placeholder="询问当前项目或构件的规范要求、合规结论…"><button id="doctorAsk" type="button">提问</button></div>
+                  <div id="doctorAnswer" class="doctor-answer" aria-live="polite">选择任务后可直接询问当前 BIMBase 上下文。</div>
+                </div>
               </section>
             </div>
           </section>
@@ -1034,10 +1039,11 @@
         }).join('') : '<p class="doctor-empty">该任务暂无结果。</p>';
       }
       function selectJob(id) { selectedId = id; renderJobs(); api('/api/bim-doctor/jobs/' + encodeURIComponent(id) + '/results').then(function (job) { renderResults(job); }).catch(function (error) { setService('结果读取失败：' + error.message, 'error'); }); }
-      function refresh() { setService('正在读取构件医生任务…', ''); return Promise.all([api('/api/bim-doctor/status'), api('/api/bim-doctor/jobs?limit=20')]).then(function (values) { setService(values[0].knowledgeReady ? '知识库与桥接服务已连接 · 已审核规则 ' + values[0].ruleCount + ' 条' : '服务已连接，知识库索引未就绪', values[0].knowledgeReady ? 'ready' : ''); jobs = values[1].jobs || []; selectedId = selectedId && jobs.some(function (job) { return job.id === selectedId; }) ? selectedId : (jobs[0] && jobs[0].id); renderJobs(); return selectedId ? selectJob(selectedId) : renderResults(null); }).catch(function (error) { setService('桥接服务未连接：' + error.message, 'error'); jobs = []; renderJobs(); renderResults(null); }); }
+      function refresh() { setService('正在读取构件医生任务…', ''); return Promise.all([api('/api/bim-doctor/status'), api('/api/bim-doctor/jobs?limit=20')]).then(function (values) { var status = values[0]; var bridge = status.bridge || {}; var bridgeText = bridge.online ? '实时桥接在线' : '实时桥接未启动'; setService((status.knowledgeReady ? '知识库已连接' : '知识库索引未就绪') + ' · ' + bridgeText + ' · 已审核规则 ' + status.ruleCount + ' 条', status.knowledgeReady ? 'ready' : ''); jobs = values[1].jobs || []; selectedId = selectedId && jobs.some(function (job) { return job.id === selectedId; }) ? selectedId : (jobs[0] && jobs[0].id); renderJobs(); return selectedId ? selectJob(selectedId) : renderResults(null); }).catch(function (error) { setService('桥接服务未连接：' + error.message, 'error'); jobs = []; renderJobs(); renderResults(null); }); }
+      function askDoctor() { var question = String($('doctorQuestion').value || '').trim(); if (!question) return; $('doctorAsk').disabled = true; $('doctorAnswerStatus').textContent = '正在检索'; $('doctorAnswer').textContent = '正在读取项目上下文并检索规范正文…'; fetch(apiRoot + '/api/bim-doctor/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BIM-Bridge-Token': '' }, body: JSON.stringify({ question: question, jobId: selectedId }) }).then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); }).then(function (payload) { var compliance = payload.compliance || {}; $('doctorAnswer').textContent = '机器判定：' + (compliance.status || 'NEED_RULE') + '\n\n' + (payload.answer || '未返回答案'); $('doctorAnswerStatus').textContent = payload.mode || '完成'; }).catch(function (error) { $('doctorAnswer').textContent = '询问失败：' + error.message; $('doctorAnswerStatus').textContent = '失败'; }).finally(function () { $('doctorAsk').disabled = false; }); }
       function open() { panel.classList.add('open'); panel.removeAttribute('inert'); panel.setAttribute('aria-hidden', 'false'); $('openBimDoctor').setAttribute('aria-expanded', 'true'); refresh(); }
       function close() { panel.classList.remove('open'); panel.setAttribute('inert', ''); panel.setAttribute('aria-hidden', 'true'); $('openBimDoctor').setAttribute('aria-expanded', 'false'); }
-      $('openBimDoctor').addEventListener('click', open); $('doctorClose').addEventListener('click', close); $('doctorRefresh').addEventListener('click', refresh); refresh();
+      $('openBimDoctor').addEventListener('click', open); $('doctorClose').addEventListener('click', close); $('doctorRefresh').addEventListener('click', refresh); $('doctorAsk').addEventListener('click', askDoctor); $('doctorQuestion').addEventListener('keydown', function (event) { if (event.key === 'Enter') askDoctor(); }); refresh(); window.setInterval(function () { if (panel.classList.contains('open')) refresh(); }, 4000);
     })();
   </script>
   <script src="ios-workbench.js"></script>

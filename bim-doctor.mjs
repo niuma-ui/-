@@ -104,6 +104,38 @@ export class BimDoctor {
     }
   }
 
+  async updateBridgeState(state) {
+    const target = path.join(this.dataDir, 'bridge-state.json');
+    await fs.writeFile(`${target}.tmp`, JSON.stringify({ ...state, lastSeenAt: new Date().toISOString() }, null, 2));
+    await fs.rename(`${target}.tmp`, target);
+    return this.getBridgeState();
+  }
+
+  async getBridgeState() {
+    try {
+      const state = JSON.parse(await fs.readFile(path.join(this.dataDir, 'bridge-state.json'), 'utf8'));
+      return { ...state, online: Date.now() - Date.parse(state.lastSeenAt || 0) < 15000 };
+    } catch {
+      return { online: false, lastSeenAt: null };
+    }
+  }
+
+  async latestSnapshot(entityId = '') {
+    const jobs = await this.listJobs(1);
+    if (!jobs.length) return { bridge: await this.getBridgeState(), job: null, project: null, component: null, result: null };
+    const job = await this.readJob(jobs[0].id);
+    const index = text(entityId) ? job.components.findIndex((component) => text(component.entityId) === text(entityId)) : 0;
+    const selectedComponent = index >= 0 ? job.components[index] : null;
+    const selectedResult = selectedComponent ? job.results.find((result) => text(result.entityId) === text(selectedComponent.entityId)) || null : null;
+    return {
+      bridge: await this.getBridgeState(),
+      job: this.jobView(job, false, false),
+      project: job.project,
+      component: selectedComponent,
+      result: selectedResult
+    };
+  }
+
   jobPath(id) {
     if (!/^[a-f0-9-]{36}$/.test(id)) throw httpError('任务 ID 无效');
     return path.join(this.dataDir, `${id}.json`);
