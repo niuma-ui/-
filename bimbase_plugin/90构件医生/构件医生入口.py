@@ -14,7 +14,7 @@ def notify(message):
         print(message)
 
 
-def run(scope):
+def run(scope, deep_identity=False):
     install_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     bridge_dir = os.path.join(
         install_root,
@@ -29,10 +29,11 @@ def run(scope):
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bridge-runtime.log")
     os.environ["BIM_DOCTOR_PROBE_LOG"] = log_path
     try:
-        notify("构件医生正在读取 BIMBase 构件，请稍候……")
+        config = bridge.load_config(config_path)
+        notify("构件医生正在%s读取 BIMBase 构件，请稍候……" % ("深度" if deep_identity else ""))
         with open(log_path, "a", encoding="utf-8") as log:
-            log.write("开始读取 scope=%s\n" % scope)
-        components, _ = bridge.extract_components(scope)
+            log.write("开始读取 scope=%s deep_identity=%s\n" % (scope, deep_identity))
+        components, _ = bridge.extract_components(scope, deep_identity or bool(config.get("readIdentityDetails", False)))
         with open(log_path, "a", encoding="utf-8") as log:
             log.write("已读取构件：%d\n" % len(components))
         if not components:
@@ -41,15 +42,15 @@ def run(scope):
                 log.write(message + "\n")
             notify(message)
             return {"summary": {"total": 0, "pass": 0, "fail": 0, "needRule": 0, "needData": 0, "error": 0}}
-        config = bridge.load_config(config_path)
         project = bridge.detect_project_context(config)
         project["checkScope"] = "project"
         project["modelScope"] = scope
+        project["nativeGroups"] = bridge.extract_native_groups(class_ids=config.get("nativeGroupClassIds"))
         result = bridge.send_job(config, components, project)
         summary = result.get("summary", {})
         notify(
             "构件医生完成：总数 %(total)s，通过 %(pass)s，不符合 %(fail)s，"
-            "待规则 %(needRule)s，缺数据 %(needData)s，异常 %(error)s" % summary
+            "身份待确认 %(needIdentity)s，待规范 %(needStandard)s，待规则 %(needRule)s，缺数据 %(needData)s，异常 %(error)s" % summary
         )
     except Exception as error:
         notify("构件医生失败：%s" % error)

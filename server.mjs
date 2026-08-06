@@ -331,12 +331,20 @@ async function handleStreamingQuery(request, response) {
     const compliance = scope === 'project' ? snapshot?.projectCompliance : snapshot?.result;
     if (snapshot && compliance && /(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
       const complianceView = { status: compliance.status, summary: compliance.summary, issues: compliance.issues || [] };
-      const sources = scope === 'project' ? [] : (snapshot.result?.sources || []);
+      const sources = scope === 'project' ? (snapshot.projectProfile?.citations || []) : (snapshot.result?.sources || []);
       const answer = complianceAnswer(snapshot, scope);
       await Promise.resolve(writeEvent('meta', { sources, documents: [], suggestions: [], resolvedQuestion: question }));
       await Promise.resolve(writeEvent('delta', { delta: answer }));
       remember(session, question, { answer, sources, documents: [], suggestions: [], mode: 'rule-engine', resolvedQuestion: question, compliance: complianceView });
       writeEvent('done', { sessionId: session.id, mode: 'rule-engine', model: null, warning: null, sources, documents: [], suggestions: [], resolvedQuestion: question, compliance: complianceView });
+      return;
+    }
+    if (snapshot?.job && isBimContextQuestion(question) && !doctorIdentityReady(snapshot, scope)) {
+      const answer = contextRequiredAnswer(snapshot, scope);
+      await Promise.resolve(writeEvent('meta', { sources: [], documents: [], suggestions: [], resolvedQuestion: question }));
+      await Promise.resolve(writeEvent('delta', { delta: answer }));
+      remember(session, question, { answer, sources: [], documents: [], suggestions: [], mode: 'identity-required', resolvedQuestion: question });
+      writeEvent('done', { sessionId: session.id, mode: 'identity-required', model: null, warning: null, sources: [], documents: [], suggestions: [], resolvedQuestion: question });
       return;
     }
     const contextualQuestion = hasBimContext ? doctorContextPrompt(snapshot, question) : question;
@@ -365,7 +373,11 @@ async function handleStreamingQuery(request, response) {
 }
 
 function profileGroupText(groups = []) {
-  return groups.slice(0, 12).map((group) => `${group.name}(${group.count})`).join('、') || '无数据';
+  return groups.slice(0, 12).map((group) => {
+    const name = group.canonicalName || group.name || group.sourceName || group.groupId || '未命名';
+    const count = group.count ?? group.memberCount ?? group.memberEntityIds?.length;
+    return count == null ? name : `${name}(${count})`;
+  }).join('、') || '无数据';
 }
 
 function doctorQuestionScope(question) {
@@ -374,25 +386,56 @@ function doctorQuestionScope(question) {
   return 'auto';
 }
 
+function isBimContextQuestion(question) {
+  return /(当前|本项目|本工程|这个构件|该构件|选中构件|整体工程|整个项目|项目构件|工程构件|真实名称|规范名称|所属系统|整体组件|作用和材质)/.test(question);
+}
+
+function doctorIdentityReady(snapshot, scope = 'auto') {
+  if (scope === 'project') {
+    const total = Number(snapshot.projectProfile?.componentCount || 0);
+    return total > 0 && Number(snapshot.projectProfile?.dataQuality?.identityVerified || 0) === total &&
+      Number(snapshot.projectProfile?.dataQuality?.standardMatched || 0) === total;
+  }
+  return snapshot.component?.identity?.status === 'verified' && snapshot.component?.standardMatch?.status === 'verified';
+}
+
+function identityMissingText(fields) {
+  const labels = { canonicalName: '真实名称', systemType: '所属系统', assemblyType: '整体组件', semanticType: '语义类型', verifiedEvidence: '审核证据', identity: '身份信息' };
+  return (fields || ['identity']).map((field) => labels[field] || field).join('、');
+}
+
+function contextRequiredAnswer(snapshot, scope = 'auto') {
+  const profile = snapshot.projectProfile || {};
+  const component = snapshot.component || {};
+  const modelGroups = (profile.modelGroups || []).map((item) => `${item.name}（${item.count}个实体）`).join('、');
+  if (scope === 'project') {
+    return `当前工程已读取 ${profile.componentCount || 0} 个实体、${profile.modelCount || 0} 个模型组${modelGroups ? `：${modelGroups}` : ''}。真实身份已核实 ${profile.dataQuality?.identityVerified || 0} 个，规范正式名称已对应 ${profile.dataQuality?.standardMatched || 0} 个；未完成的构件不能判断合规。`;
+  }
+  return `当前实体为 ${component.entityId || '未选中'}${component.sourceName ? `，BIMBase原始名称为“${component.sourceName}”` : ''}。其真实专业身份或规范正式名称对应依据尚不完整，不能据此匹配规范或判断合规。`;
+}
+
 function doctorContextPrompt(snapshot, question) {
   const project = snapshot.project || {};
   const profile = snapshot.projectProfile || {};
   const component = snapshot.component || {};
   const result = snapshot.result || {};
   const parameters = Object.entries(component.parameters || {}).map(([key, value]) => `${key}=${value}`).join('，');
-  const issues = (result.issues || []).map((issue) => `${issue.title || issue.ruleId}: 实际${issue.actual ?? '缺失'}，预期${issue.expected || ''}`).join('；');
+  const issues = (result.issues || []).map((issue) => {
+    const source = issue.sources?.[0] || {};
+    return `${issue.title || issue.ruleId}: 实际${issue.actual ?? '缺失'}，预期${issue.expected || ''}，依据${source.code || issue.standardCode || '未填写'} ${source.clause || issue.clause || ''} 第${source.page || '未标注'}页`;
+  }).join('；');
   const componentIndex = (profile.components || []).slice(0, 60).map((item) =>
-    `${item.entityId}[系统=${item.systemType || '未识别'},组件=${item.assemblyType || '未识别'},类型=${item.semanticType || '未识别'},作用=${item.role || '未识别'},材质=${item.material || '未识别'},SDK类=${item.className || '无'},层级=${item.levelName || '无'}]`
+    `${item.entityId}[真实名称=${item.canonicalName || '待确认'},规范名称=${item.standardName || '待对应'},原始名称=${item.sourceName || '无'},身份=${item.identity?.status || 'unresolved'},规范对应=${item.standardMatch?.status || 'unresolved'},系统=${item.systemType || '未识别'},组件=${item.assemblyType || '未识别'},类型=${item.semanticType || '未识别'},作用=${item.role || '未识别'},材质=${item.material || '未识别'},SDK类=${item.className || '无'},层级=${item.levelName || '无'}]`
   ).join('；');
   return [
     `BIMBase整体工程：项目=${project.name || '未知'}，工程类型=${project.type || '未分类'}，专业=${project.discipline || '未填写'}，阶段=${project.stage || '未填写'}，构件数=${profile.componentCount ?? '未知'}，模型数=${profile.modelCount ?? '未知'}`,
-    `工程组成：系统=${profileGroupText(profile.systems)}；整体组件=${profileGroupText(profile.assemblies)}；构件类型=${profileGroupText(profile.componentTypes)}；材质=${profileGroupText(profile.materials)}`,
-    `分类质量：完整=${profile.dataQuality?.classified || 0}，部分=${profile.dataQuality?.partial || 0}，未识别=${profile.dataQuality?.unclassified || 0}`,
+    `工程组成：系统=${profileGroupText(profile.systems)}；整体组件=${profileGroupText(profile.assemblies)}；规范正式名称=${profileGroupText(profile.standardNames)}；构件类型=${profileGroupText(profile.componentTypes)}；材质=${profileGroupText(profile.materials)}；BIM原生组合=${profileGroupText(profile.nativeGroups)}`,
+    `身份质量：已核实=${profile.dataQuality?.identityVerified || 0}，规范名称已对应=${profile.dataQuality?.standardMatched || 0}，部分=${profile.dataQuality?.identityPartial || 0}，未识别=${profile.dataQuality?.identityUnresolved || 0}`,
     `工程构件目录：${componentIndex || '尚未取得构件语义信息'}`,
-    `当前构件：entityId=${component.entityId || '未选中'}，系统=${component.systemType || '未识别'}，整体组件=${component.assemblyType || '未识别'}，语义类型=${component.semanticType || '未识别'}，作用=${component.role || '未识别'}，材质=${component.material || '未识别'}，参数=${parameters || '无'}`,
+    `当前构件：entityId=${component.entityId || '未选中'}，真实名称=${component.canonicalName || '待确认'}，规范正式名称=${component.standardName || '待对应'}，原始名称=${component.sourceName || component.name || '无'}，身份状态=${component.identity?.status || 'unresolved'}，规范对应状态=${component.standardMatch?.status || 'unresolved'}，系统路径=${(component.systemPath || []).join(' / ') || '未识别'}，语义类型=${component.semanticType || '未识别'}，作用=${component.role || '未识别'}，材质=${component.material || '未识别'}，参数=${parameters || '无'}`,
     `机器规则结论：${result.status || 'NEED_RULE'}；${result.summary || '尚无已审核机器规则'}${issues ? `；问题=${issues}` : ''}`,
     `用户问题：${question}`,
-    '先判断用户询问的是整体工程还是单构件，再按系统、整体组件、构件类型、作用、材质和参数回答。只依据结构化 BIM 语义与检索到的规范正文；形状名称不参与分类。未识别字段必须说明缺失，不得猜测。涉及是否合规时先明确机器规则状态；NEED_RULE/NEED_DATA 不得回答为合格。'
+    '先判断用户询问的是整体工程还是单构件，再按真实名称、系统、整体组件、构件类型、作用、材质和参数回答。只依据已核实的 BIM 身份证据、已审核规则和检索到的规范正文；形状及原始组合名称不参与规范分类。回答按结论、对象、参数对比、规范编号与版本、条款与PDF页码、原文摘要、建议组织。任何缺失必须明确，不得猜测；NEED_IDENTITY/NEED_STANDARD/NEED_RULE/NEED_DATA 均不得回答为合格。'
   ].join('\n');
 }
 
@@ -400,10 +443,10 @@ function doctorContextTerms(snapshot) {
   const project = snapshot.project || {};
   const profile = snapshot.projectProfile || {};
   const component = snapshot.component || {};
-  return [project.type, project.discipline, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType,
-    ...(profile.systems || []).map((item) => item.name), ...(profile.assemblies || []).map((item) => item.name), ...(profile.componentTypes || []).map((item) => item.name)]
+  return [project.type, project.discipline, component.canonicalName, component.standardName, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType, component.role, component.material,
+    ...(profile.systems || []).map((item) => item.name), ...(profile.assemblies || []).map((item) => item.name), ...(profile.standardNames || []).map((item) => item.name), ...(profile.componentTypes || []).map((item) => item.name)]
     .map((value) => String(value || '').trim())
-    .filter((value, index, values) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别)/.test(value) && values.indexOf(value) === index);
+    .filter((value, index, values) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别|未匹配|待确认)/.test(value) && values.indexOf(value) === index);
 }
 
 function complianceAnswer(snapshot, scope = 'auto') {
@@ -411,15 +454,24 @@ function complianceAnswer(snapshot, scope = 'auto') {
   const result = useProject ? (snapshot.projectCompliance || {}) : (snapshot.result || {});
   if (useProject) {
     const summary = result.summary || {};
-    if (result.status === 'PASS') return `整体工程快照共 ${summary.total || 0} 个构件，已审核机器规则全部通过。仍需结合完整工况和规范原页复核。`;
-    if (result.status === 'FAIL') return `整体工程存在 ${summary.fail || 0} 个不符合构件；请在构件医生中逐项查看失败规则、实际值和规范条文。`;
-    if (result.status === 'NEED_DATA') return `整体工程有 ${summary.needData || 0} 个构件缺少规则所需数据，当前不能判定整体合格。`;
-    return `整体工程共识别 ${summary.total || 0} 个构件，其中 ${summary.needRule || 0} 个尚无适用的已审核机器规则，不能判断整体合格。`;
+    if (result.status === 'PASS') return `结论：通过当前已审核规则。\n对象：整体工程快照，共 ${summary.total || 0} 个真实身份已核实构件。\n依据：${snapshot.projectProfile?.citations?.length || 0} 组可追溯规范引用。\n说明：仍需结合完整设计工况和规范原页进行最终复核。`;
+    if (result.status === 'FAIL') return `结论：不符合。\n对象：整体工程，共 ${summary.fail || 0} 个构件未通过已审核规则。\n处理：请按构件医生报告中的实际值、限值、规范条款、PDF页码和整改建议逐项处理。`;
+    if (result.status === 'NEED_DATA') return `结论：无法判定。\n原因：${summary.needData || 0} 个构件缺少规则所需参数。\n处理：补齐带单位的实际参数后重新检查。`;
+    if (result.status === 'NEED_IDENTITY') return `结论：无法判定。\n原因：${summary.needIdentity || 0} 个实体尚未确认真实专业名称、系统、整体组件或身份依据。\n处理：完成真实构件身份审核后再匹配规范。`;
+    if (result.status === 'NEED_STANDARD') return `结论：无法判定。\n原因：${summary.needStandard || 0} 个已识别构件在当前规范库中没有直接匹配的可靠条文。\n处理：补充并审核适用规范原文。`;
+    return `结论：无法判定。\n原因：${summary.needRule || 0} 个构件尚无适用的已审核机器规则。\n处理：确认适用规范、条款、限值和适用条件后建立规则。`;
   }
-  if (result.status === 'PASS') return '基于当前已审核的机器规则，本次检查通过。仍应结合完整设计工况和规范原页进行最终复核。';
-  if (result.status === 'FAIL') return `本次检查不符合已审核规则：${(result.issues || []).filter((issue) => issue.status === 'FAIL').map((issue) => `${issue.title || issue.ruleId}，实际 ${issue.actual}，要求 ${issue.expected}`).join('；')}`;
-  if (result.status === 'NEED_DATA') return '当前缺少规则所需的项目或构件参数，无法判定是否合格。请先补齐结果中标记为 NEED_DATA 的字段。';
-  return '当前没有适用于该项目/整体组件的已审核机器规则，因此不能判断为合格或不合格。系统只能提供候选规范，待确认适用标准和条文后才能形成准确结论。';
+  const component = snapshot.component || {};
+  const objectText = `${component.canonicalName || '真实名称待确认'}（规范名称：${component.standardName || '待对应'}；${component.entityId || '未选中'}）`;
+  if (result.status === 'NEED_IDENTITY') return `结论：无法判定。\n对象：${objectText}。\n原因：真实构件身份尚未核实，缺少 ${identityMissingText(component.identity?.missing)}。`;
+  if (result.status === 'NEED_STANDARD') return `结论：无法判定。\n对象：${objectText}。\n原因：尚未用规范编号、版本、条款、PDF页码和原文核实其规范正式名称及适用关系。`;
+  if (result.status === 'NEED_RULE') return `结论：无法判定。\n对象：${objectText}。\n原因：已有候选规范，但尚未形成包含条款、页码、限值和适用条件的已审核规则。`;
+  if (result.status === 'NEED_DATA') return `结论：无法判定。\n对象：${objectText}。\n原因：缺少规则所需的带单位实际参数。`;
+  const issueLines = (result.issues || []).map((issue) => {
+    const source = issue.sources?.[0] || {};
+    return `- ${issue.title || issue.ruleId}：实际 ${issue.actual ?? '缺失'}，要求 ${issue.expected}；依据 ${source.code || issue.standardCode || '未填写'} ${source.version || ''} 第${source.clause || issue.clause || '未标注'}条，PDF第${source.page || '未标注'}页；${source.excerpt ? `原文摘要：${source.excerpt}；` : ''}${issue.suggestion ? `建议：${issue.suggestion}` : ''}`;
+  }).join('\n');
+  return `结论：${result.status === 'PASS' ? '符合当前已审核规则' : '不符合当前已审核规则'}。\n对象：${objectText}，系统路径 ${(component.systemPath || []).join(' / ') || '未识别'}。\n核验：\n${issueLines || '无检查项'}\n说明：结论仅覆盖列出的规则、参数和工况。`;
 }
 
 const server = http.createServer(async (request, response) => {
@@ -473,26 +525,24 @@ const server = http.createServer(async (request, response) => {
         if (!question) throw new Error('question 不能为空');
         const snapshot = body.jobId ? await bimDoctor.readJob(body.jobId).then(async (job) => {
           const result = (job.results || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.results?.[0] || null;
-          const component = (job.components || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.components?.[0] || null;
+          const rawComponent = (job.components || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.components?.[0] || null;
           const profile = bimDoctor.projectProfile(job);
-          return { bridge: await bimDoctor.getBridgeState(), job: bimDoctor.jobView(job), project: job.project, projectProfile: profile, projectCompliance: profile.compliance, component, result };
+          return { bridge: await bimDoctor.getBridgeState(), job: bimDoctor.jobView(job), project: job.project, projectProfile: profile, projectCompliance: profile.compliance, component: bimDoctor.componentView(rawComponent, job.project), result };
         }) : await bimDoctor.latestSnapshot(body.entityId || '');
         const scope = doctorQuestionScope(question);
         const scopedCompliance = scope === 'project' ? snapshot.projectCompliance : snapshot.result;
         const compliance = scopedCompliance ? { status: scopedCompliance.status, summary: scopedCompliance.summary, issues: scopedCompliance.issues || [] } : { status: 'NEED_RULE', summary: '暂无项目检查结果', issues: [] };
         if (/(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
-          json(response, 200, { answer: complianceAnswer(snapshot, scope), sources: scope === 'project' ? [] : (snapshot.result?.sources || []), documents: [], suggestions: [], mode: 'rule-engine', compliance, snapshot });
+          json(response, 200, { answer: complianceAnswer(snapshot, scope), sources: scope === 'project' ? (snapshot.projectProfile?.citations || []) : (snapshot.result?.sources || []), documents: [], suggestions: [], mode: 'rule-engine', compliance, snapshot });
+          return;
+        }
+        if (isBimContextQuestion(question) && !doctorIdentityReady(snapshot, scope)) {
+          json(response, 200, { answer: contextRequiredAnswer(snapshot, scope), sources: [], documents: [], suggestions: [], mode: 'identity-required', compliance, snapshot });
           return;
         }
         const terms = doctorContextTerms(snapshot);
         if (!terms.length) {
-          const profile = snapshot.projectProfile || {};
-          const component = snapshot.component || {};
-          const modelGroups = (profile.modelGroups || []).map((item) => `${item.name}（${item.count}个实体）`).join('、');
-          const answer = scope === 'project'
-            ? `当前工程已识别 ${profile.componentCount || 0} 个实体、${profile.modelCount || 0} 个整体模型组${modelGroups ? `：${modelGroups}` : ''}。p3d 暂未提供可验证的系统、语义构件类型、作用和材质，不能据形状名称猜测。请在工程分类映射中补充经确认的 ModelId 语义后再定位规范。`
-            : `当前构件为 ${component.entityId || '未选中'}${component.modelId != null ? `，所属模型 ${component.modelId}` : ''}。p3d 暂未提供可验证的语义类型、作用和材质，不能据形状名称猜测。请在工程分类映射中补充经确认的 ModelId/EntityId 语义。`;
-          json(response, 200, { answer, sources: [], documents: [], suggestions: [], mode: 'context-required', compliance, snapshot });
+          json(response, 200, { answer: contextRequiredAnswer(snapshot, scope), sources: [], documents: [], suggestions: [], mode: 'context-required', compliance, snapshot });
           return;
         }
         const probe = knowledge.search(`${terms.join(' ')} ${question}`, 8);

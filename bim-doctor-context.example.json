@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "revision": 0,
   "mappings": [
     {
@@ -13,12 +13,35 @@
         {
           "id": "COMPONENT-001",
           "enabled": true,
-          "when": { "modelId": "请填写 BIMBase ModelId" },
+          "when": { "modelId": "请填写 BIMBase ModelId", "elementId": "请填写 BIMBase ElementId" },
+          "canonicalName": "请填写经过工程资料确认的真实专业名称",
+          "standardName": "请填写规范正文中的正式构件名称",
           "systemType": "请填写所属系统",
           "assemblyType": "请填写所属整体组件",
           "semanticType": "请填写语义构件类型",
           "role": "请填写工程作用",
-          "material": "请填写明确材质；未知时删除本字段"
+          "material": "请填写明确材质；未知时删除本字段",
+          "reviewedBy": "请填写审核人",
+          "reviewedAt": "2026-08-07T00:00:00+08:00",
+          "evidence": [
+            {
+              "type": "design-document",
+              "source": "请填写设计图纸、设备表或模型属性集名称",
+              "field": "请填写证据字段",
+              "value": "请填写原始证据值"
+            }
+          ],
+          "standardReferences": [
+            {
+              "standardCode": "请填写规范编号",
+              "standardVersion": "请填写规范版本",
+              "standardStatus": "current",
+              "clause": "请填写定义或适用范围条文号",
+              "sourceDocument": "请填写规范PDF文件名",
+              "sourcePage": 1,
+              "sourceExcerpt": "请填写能证明名称与适用范围的规范原文摘要"
+            }
+          ]
         }
       ]
     }

@@ -18,28 +18,50 @@ const doctor = new BimDoctor({
 });
 
 await doctor.initialize();
+await assert.rejects(() => doctor.setContextMappings([{
+  id: 'INVALID-MAP', match: 'invalid', componentMappings: [{ id: 'INVALID-COMPONENT', when: { modelId: '1' }, canonicalName: '未审核名称' }]
+}]), /reviewedBy\/reviewedAt/);
+await assert.rejects(() => doctor.setContextMappings([{
+  id: 'BROAD-MAP', match: 'broad', componentMappings: [{
+    id: 'BROAD-COMPONENT', when: { modelId: '1' }, canonicalName: '测试构件', standardName: '测试构件', semanticType: 'test', systemType: '测试系统', assemblyType: '测试组件',
+    reviewedBy: 'test', reviewedAt: '2026-08-07T00:00:00Z', evidence: ['测试设备表'],
+    standardReferences: [{ standardCode: 'TEST-1', standardVersion: '2026', standardStatus: 'current', clause: '1.1', sourceDocument: 'test.pdf', sourcePage: 1, sourceExcerpt: '测试构件定义。' }]
+  }]
+}]), /独立定位/);
 await doctor.setContextMappings([{
   id: 'MAP-1', match: 'mapped-project', projectType: '水工建筑', discipline: '结构',
   componentMappings: [{
-    id: 'MODEL-10', when: { modelId: '10' }, systemType: '输水系统', assemblyType: '闸室组件',
-    semanticType: '检修闸门', role: '检修隔断', material: '钢'
+    id: 'MODEL-10', when: { modelId: '10', elementId: '1' }, systemType: '输水系统', assemblyType: '闸室组件',
+    canonicalName: '检修闸门 1 号', semanticType: '检修闸门', role: '检修隔断', material: '钢',
+    standardName: '检修闸门',
+    reviewedBy: 'test-reviewer', reviewedAt: '2026-08-07T00:00:00Z',
+    evidence: [{ type: 'design-document', source: '设备表', field: '设备编号', value: 'GATE-001' }],
+    standardReferences: [{ standardCode: 'TEST-1', standardVersion: '2026', standardStatus: 'current', clause: '2.1', sourceDocument: 'test.pdf', sourcePage: 3, sourceExcerpt: '检修闸门定义。' }]
   }]
 }]);
 const mappedJob = await doctor.createJob({ project: { name: 'mapped-project', path: 'D:/mapped-project.p3d' } });
 assert.equal(mappedJob.project.type, '水工建筑');
 assert.equal(mappedJob.project.discipline, '结构');
 assert.equal(mappedJob.project.snapshotVersion, 1);
-await doctor.addComponents(mappedJob.id, [{ entityId: '10:1', modelId: 10, name: '长方体', shapeName: '长方体', parameters: {} }]);
+await doctor.addComponents(mappedJob.id, [{ entityId: '10:1', modelId: 10, elementId: 1, name: '长方体', shapeName: '长方体', parameters: {} }]);
 const mappedProfile = doctor.projectProfile(await doctor.readJob(mappedJob.id));
 assert.equal(mappedProfile.systems[0].name, '输水系统');
 assert.equal(mappedProfile.componentTypes[0].name, '检修闸门');
 assert.deepEqual(mappedProfile.modelGroups, [{ modelId: '10', name: '模型 10', count: 1 }]);
 assert.equal(mappedProfile.components[0].role, '检修隔断');
+assert.equal(mappedProfile.components[0].canonicalName, '检修闸门 1 号');
+assert.equal(mappedProfile.components[0].identity.status, 'verified');
+assert.equal(mappedProfile.components[0].standardMatch.status, 'verified');
 assert.equal(mappedProfile.components[0].classification.shapeNameUsed, false);
 await assert.rejects(() => doctor.setRules([{
   id: 'UNREVIEWED', componentTypes: ['wall'], field: 'parameters.width', operator: '>=', value: 200,
   unit: 'mm', standardCode: 'TEST-1', clause: '3.1'
 }]), /reviewed/);
+await assert.rejects(() => doctor.setRules([{
+  id: 'MISSING-SOURCE', status: 'reviewed', componentTypes: ['wall'], field: 'parameters.width', operator: '>=', value: 200,
+  unit: 'mm', standardCode: 'TEST-1', clause: '3.1', reviewedBy: 'test', reviewedAt: '2026-08-07T00:00:00Z',
+  version: '1.0.0', standardVersion: '2026', standardStatus: 'current'
+}]), /sourceDocument/);
 await doctor.setRules([{
   id: 'WIDTH-001',
   status: 'reviewed',
@@ -52,28 +74,42 @@ await doctor.setRules([{
   standardCode: 'TEST-1',
   clause: '3.1',
   reviewedBy: 'test',
+  reviewedAt: '2026-08-07T00:00:00Z',
   version: '1.0.0',
+  standardVersion: '2026',
+  standardStatus: 'current',
+  sourceDocument: 'test.pdf',
+  sourcePath: 'test.pdf',
+  sourcePage: 3,
+  sourceExcerpt: '构件宽度不得小于 200 mm。',
   tolerance: 0
 }]);
 const job = await doctor.createJob({ project: { name: '测试工程', type: '水工建筑' } });
+const standardIdentity = {
+  standardName: '测试墙体', standardMatchStatus: 'verified',
+  standardReferences: [{ standardCode: 'TEST-1', standardVersion: '2026', standardStatus: 'current', clause: '3.1', sourceDocument: 'test.pdf', sourcePage: 3, sourceExcerpt: '测试墙体定义。', reviewedBy: 'test', reviewedAt: '2026-08-07T00:00:00Z' }]
+};
 await doctor.addComponents(job.id, [
-  { entityId: '1:1', componentType: 'wall', parameters: { width: 240 } },
-  { entityId: '1:2', componentType: 'wall', parameters: { width: 180 } },
-  { entityId: '1:3', componentType: 'wall', parameters: {} }
+  { entityId: '1:1', canonicalName: '测试墙 1', semanticType: 'wall', systemType: '主体系统', assemblyType: '墙体组件', identityStatus: 'verified', identityEvidence: ['测试设备表'], ...standardIdentity, parameters: { width: 240 } },
+  { entityId: '1:2', canonicalName: '测试墙 2', semanticType: 'wall', systemType: '主体系统', assemblyType: '墙体组件', identityStatus: 'verified', identityEvidence: ['测试设备表'], ...standardIdentity, parameters: { width: 180 } },
+  { entityId: '1:3', canonicalName: '测试墙 3', semanticType: 'wall', systemType: '主体系统', assemblyType: '墙体组件', identityStatus: 'verified', identityEvidence: ['测试设备表'], ...standardIdentity, parameters: {} }
 ]);
 const result = await doctor.runJob(job.id);
-assert.deepEqual(result.summary, { total: 3, pass: 1, fail: 1, warning: 0, needRule: 0, needData: 1, error: 0 });
+assert.deepEqual(result.summary, { total: 3, pass: 1, fail: 1, warning: 0, needIdentity: 0, needStandard: 0, needRule: 0, needData: 1, error: 0 });
 assert.equal(result.results[1].issues[0].actual, 180);
 assert.equal(result.results[2].status, 'NEED_DATA');
+assert.equal(result.results[0].sources[0].page, 3);
+assert.equal(result.results[0].sources[0].excerpt, '构件宽度不得小于 200 mm。');
 
 const shapeOnlyJob = await doctor.createJob({ project: { name: '变电设备' } });
 await doctor.addComponents(shapeOnlyJob.id, [
   { entityId: '2:1', name: '长方体', shapeName: '长方体', componentType: null, parameters: { width: 240 } }
 ]);
 const shapeOnlyResult = await doctor.runJob(shapeOnlyJob.id);
-assert.equal(shapeOnlyResult.results[0].status, 'NEED_RULE');
+assert.equal(shapeOnlyResult.results[0].status, 'NEED_IDENTITY');
 assert.equal(shapeOnlyResult.results[0].sources.length, 0);
-assert.match(shapeOnlyResult.results[0].summary, /无法可靠检索/);
+assert.match(shapeOnlyResult.results[0].summary, /真实构件身份尚未核实/);
+assert.match(shapeOnlyResult.results[0].summary, /真实名称、所属系统、整体组件、语义类型、审核证据/);
 const duplicateProjectJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
 const dedupedJobs = await doctor.listJobs();
 assert.equal(dedupedJobs.length, 4);

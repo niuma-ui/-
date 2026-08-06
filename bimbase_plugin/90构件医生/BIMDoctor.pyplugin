@@ -14,6 +14,9 @@
             <Button name="检查活动模型">
                 <command>检查活动模型.py</command>
             </Button>
+            <Button name="深度识别真实组件">
+                <command>深度识别真实组件.py</command>
+            </Button>
             <Button name="诊断构件读取">
                 <command>诊断构件读取.py</command>
             </Button>

@@ -228,7 +228,8 @@
               <div class="doctor-section-head"><h3 id="doctorProjectTitle">整体工程</h3><span id="doctorProjectIdentity">未识别</span></div>
               <div class="doctor-profile-grid">
                 <div><b>系统</b><span id="doctorProjectSystems">未识别</span></div>
-                <div><b>整体组件</b><span id="doctorProjectAssemblies">未识别</span></div>
+                <div><b id="doctorProjectAssembliesLabel">整体组件</b><span id="doctorProjectAssemblies">未识别</span></div>
+                <div><b>规范正式名称</b><span id="doctorProjectStandardNames">未匹配</span></div>
                 <div><b>构件类型</b><span id="doctorProjectTypes">未识别</span></div>
                 <div><b>材质</b><span id="doctorProjectMaterials">未识别</span></div>
               </div>
@@ -1045,7 +1046,8 @@
           var project = job.project && job.project.name || '当前工程';
           var scope = job.project && job.project.checkScope === 'component' ? '单构件 · ' + (job.project.targetEntityId || '') : '工程快照';
           var summary = job.summary || {};
-          return '<button class="doctor-job ' + (job.id === selectedId ? 'active' : '') + '" type="button" data-job="' + esc(job.id) + '"><b>' + esc(project) + '</b><small>' + esc(scope) + ' · ' + esc(new Date(job.updatedAt || job.createdAt).toLocaleString()) + ' · ' + (summary.total || 0) + ' 构件 · 待规则 ' + (summary.needRule || 0) + '</small></button>';
+          var pending = (summary.needIdentity || 0) + (summary.needStandard || 0) + (summary.needRule || 0) + (summary.needData || 0);
+          return '<button class="doctor-job ' + (job.id === selectedId ? 'active' : '') + '" type="button" data-job="' + esc(job.id) + '"><b>' + esc(project) + '</b><small>' + esc(scope) + ' · ' + esc(new Date(job.updatedAt || job.createdAt).toLocaleString()) + ' · ' + (summary.total || 0) + ' 构件 · 待处理 ' + pending + '</small></button>';
         }).join('') : '<p class="doctor-empty">BIMBase 提交检查后，任务会显示在这里。</p>';
         Array.prototype.forEach.call(document.querySelectorAll('[data-job]'), function (button) { button.addEventListener('click', function () { selectJob(button.dataset.job); }); });
       }
@@ -1053,16 +1055,19 @@
         var section = $('doctorProjectProfile');
         if (!profile) { section.hidden = true; return; }
         var project = profile.project || {};
-        var groups = function (items) { return (items || []).slice(0, 6).map(function (item) { return item.name + ' (' + item.count + ')'; }).join('、') || '未识别'; };
+        var groups = function (items) { return (items || []).slice(0, 6).map(function (item) { var name = item.canonicalName || item.name || item.sourceName || item.groupId; var count = item.count == null ? (item.memberEntityIds && item.memberEntityIds.length) : item.count; return name + (count == null ? '' : ' (' + count + ')'); }).join('、') || '未识别'; };
         section.hidden = false;
         $('doctorProjectIdentity').textContent = [project.name, project.type, project.discipline, project.stage].filter(Boolean).join(' · ') || '未识别';
         $('doctorProjectSystems').textContent = groups(profile.systems);
         var knownAssemblies = (profile.assemblies || []).filter(function (item) { return item.name !== '未识别整体组件'; });
-        $('doctorProjectAssemblies').textContent = groups(knownAssemblies.length ? knownAssemblies : profile.modelGroups);
+        var nativeGroups = profile.nativeGroups || [];
+        $('doctorProjectAssembliesLabel').textContent = knownAssemblies.length ? '整体组件' : (nativeGroups.length ? '原生组合（待确认）' : '模型组（待确认）');
+        $('doctorProjectAssemblies').textContent = groups(knownAssemblies.length ? knownAssemblies : (nativeGroups.length ? nativeGroups : profile.modelGroups));
+        $('doctorProjectStandardNames').textContent = groups(profile.standardNames);
         $('doctorProjectTypes').textContent = groups(profile.componentTypes);
         $('doctorProjectMaterials').textContent = groups(profile.materials);
         var quality = profile.dataQuality || {};
-        $('doctorProjectQuality').textContent = '构件 ' + (profile.componentCount || 0) + ' · 完整分类 ' + (quality.classified || 0) + ' · 部分分类 ' + (quality.partial || 0) + ' · 待识别 ' + (quality.unclassified || 0);
+        $('doctorProjectQuality').textContent = '构件 ' + (profile.componentCount || 0) + ' · 身份已核实 ' + (quality.identityVerified || 0) + ' · 规范名称已对应 ' + (quality.standardMatched || 0) + ' · 待确认 ' + (quality.identityUnresolved || 0);
       }
       function renderResults(job) {
         selectedJob = job;
@@ -1070,7 +1075,7 @@
         $('doctorTotal').textContent = summary.total == null ? '—' : summary.total;
         $('doctorPass').textContent = summary.pass || 0;
         $('doctorFail').textContent = summary.fail || 0;
-        $('doctorPending').textContent = (summary.needRule || 0) + (summary.needData || 0);
+        $('doctorPending').textContent = (summary.needIdentity || 0) + (summary.needStandard || 0) + (summary.needRule || 0) + (summary.needData || 0);
         var filter = $('doctorResultFilter');
         filter.disabled = !job;
         $('doctorReport').disabled = !job || !job.id;
@@ -1083,12 +1088,16 @@
         var components = new Map((job.components || []).map(function (component) { return [String(component.entityId), component]; }));
         $('doctorResultList').innerHTML = visibleResults.length ? visibleResults.map(function (result) {
           var component = components.get(String(result.entityId)) || {};
-          var details = [component.systemType, component.assemblyType, component.semanticType, component.role, component.material].filter(Boolean).join(' · ');
+          var identity = component.identity || {};
+          var identityName = component.canonicalName || identity.canonicalName || '真实名称待确认';
+          var identityLabels = { canonicalName: '真实名称', systemType: '所属系统', assemblyType: '整体组件', semanticType: '语义类型', verifiedEvidence: '审核证据', identity: '身份信息' };
+          var resultSummary = result.status === 'NEED_IDENTITY' ? '真实构件身份尚未核实，缺少：' + ((identity.missing || ['identity']).map(function (field) { return identityLabels[field] || field; }).join('、')) + '。' : (result.summary || '');
+          var details = [identityName, component.standardName && '规范名称：' + component.standardName, component.systemType, component.assemblyType, component.semanticType, component.role, component.material].filter(Boolean).join(' · ');
           var technical = [component.levelName, component.schemaName, component.componentTypeRaw].filter(Boolean).join(' · ');
-          var issues = (result.issues || []).map(function (issue) { return '<div class="doctor-issue">' + esc(issue.title || issue.ruleId) + '：实际 ' + esc(issue.actual == null ? '缺失' : issue.actual) + '，预期 ' + esc(issue.expected || '') + '</div>'; }).join('');
+          var issues = (result.issues || []).map(function (issue) { var source = issue.sources && issue.sources[0] || {}; return '<div class="doctor-issue"><b>' + esc(issue.title || issue.ruleId) + '</b>：实际 ' + esc(issue.actual == null ? '缺失' : issue.actual) + '，预期 ' + esc(issue.expected || '') + (source.code ? '<br><small>依据：' + esc(source.code) + ' ' + esc(source.version || '') + ' 第' + esc(source.clause || issue.clause || '') + '条 · PDF第' + esc(source.page || '') + '页</small>' : '') + (source.excerpt ? '<br><small>原文摘要：' + esc(source.excerpt) + '</small>' : '') + '</div>'; }).join('');
           var sourceLabel = result.status === 'PASS' || result.status === 'FAIL' ? '依据' : '候选规范（未审核）';
-          var sources = (result.sources || []).map(function (source) { return '<small>' + sourceLabel + '：' + esc(source.code || source.title) + ' 第' + esc(source.page) + '页</small>'; }).join('<br>');
-          return '<article class="doctor-result" data-status="' + esc(result.status) + '"><b>' + esc(result.entityId) + ' · ' + esc(result.status) + '</b><small>' + esc(details || (technical ? 'SDK 元数据 · ' + technical : '语义、作用或材质待识别')) + '</small><small>' + esc(result.summary || '') + '</small>' + issues + (sources ? '<div class="doctor-issue">' + sources + '</div>' : '') + '</article>';
+          var sources = (result.sources || []).map(function (source) { return '<small>' + sourceLabel + '：' + esc(source.code || source.title) + (source.version ? ' ' + esc(source.version) : '') + (source.clause ? ' 第' + esc(source.clause) + '条' : '') + ' · PDF第' + esc(source.page) + '页</small>'; }).join('<br>');
+          return '<article class="doctor-result" data-status="' + esc(result.status) + '"><b>' + esc(identityName) + ' · ' + esc(result.entityId) + ' · ' + esc(result.status) + '</b><small>身份：' + esc(identity.status || component.identityStatus || 'unresolved') + ' · 规范对应：' + esc(component.standardMatch && component.standardMatch.status || 'unresolved') + (component.sourceName ? ' · 原始名称：' + esc(component.sourceName) : '') + '</small><small>' + esc(details || (technical ? 'SDK 元数据 · ' + technical : '语义、作用或材质待识别')) + '</small><small>' + esc(resultSummary) + '</small>' + issues + (sources && !issues ? '<div class="doctor-issue">' + sources + '</div>' : '') + '</article>';
         }).join('') + (results.length > visibleResults.length ? '<p class="doctor-empty">仅显示前 200 项，请按构件 ID 筛选。</p>' : '') : '<p class="doctor-empty">没有匹配的构件。</p>';
       }
       function selectJob(id) { if (selectedId !== id) $('doctorResultFilter').value = ''; selectedId = id; renderJobs(); api('/api/bim-doctor/jobs/' + encodeURIComponent(id) + '/results').then(function (job) { renderResults(job); }).catch(function (error) { setService('结果读取失败：' + error.message, 'error'); }); }

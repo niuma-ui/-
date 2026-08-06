@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const allowedOperators = new Set(['exists', '==', '!=', '>', '>=', '<', '<=', 'between', 'contains']);
 const ruleStatuses = new Set(['draft', 'reviewed', 'retired']);
+const standardStatuses = new Set(['current', 'effective']);
 
 function httpError(message, statusCode = 400) {
   const error = new Error(message);
@@ -18,6 +19,19 @@ function text(value) {
 function semanticText(value) {
   const valueText = text(value);
   return /^(默认|未知|未定义|未识别|无|N\/A|BIMBase构件)$/i.test(valueText) ? '' : valueText;
+}
+
+const IDENTITY_FIELD_LABELS = {
+  canonicalName: '真实名称',
+  systemType: '所属系统',
+  assemblyType: '整体组件',
+  semanticType: '语义类型',
+  verifiedEvidence: '审核证据',
+  identity: '身份信息'
+};
+
+function identityMissingText(fields) {
+  return (fields || ['identity']).map((field) => IDENTITY_FIELD_LABELS[field] || field).join('、');
 }
 
 function getField(object, field) {
@@ -78,11 +92,12 @@ function matchesValues(expected = ['*'], actual = []) {
 function matchesComponent(rule, component, project = {}) {
   // name/shapeName are geometric labels (e.g. "长方体"), never compliance classification.
   const checks = [
-    [rule.projectTypes, [project.type, project.name]],
+    [rule.projectTypes, [project.type]],
     [rule.disciplines, [project.discipline]],
     [rule.systemTypes, [component.systemType, component.system]],
     [rule.assemblyTypes, [component.assemblyType, component.assembly, component.category]],
-    [rule.componentTypes, [component.componentType, component.componentTypeRaw, component.semanticType]]
+    [rule.standardNames, [component.standardName]],
+    [rule.componentTypes, [component.componentType, component.semanticType]]
   ].filter(([expected]) => Array.isArray(expected) && expected.length);
   return checks.length === 0 || checks.every(([expected, actual]) => matchesValues(expected, actual));
 }
@@ -96,9 +111,12 @@ function complianceContext(project, component) {
     component.assemblyType,
     component.assembly,
     component.category,
+    component.canonicalName,
+    component.standardName,
     component.semanticType,
     component.componentType,
-    component.componentTypeRaw
+    component.role,
+    component.material
   ].map(text).filter(Boolean).join(' ');
 }
 
@@ -113,6 +131,47 @@ function propertyValue(component, aliases) {
     }
   }
   return null;
+}
+
+function normalizeEvidence(entries, defaults = {}) {
+  const values = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+  return values.map((entry, index) => {
+    if (typeof entry === 'string') return { type: defaults.type || 'reference', source: text(entry) };
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    return {
+      type: text(entry.type || defaults.type) || 'reference',
+      source: text(entry.source || entry.document || defaults.source),
+      field: text(entry.field),
+      value: entry.value ?? null,
+      reviewedBy: text(entry.reviewedBy || defaults.reviewedBy),
+      reviewedAt: text(entry.reviewedAt || defaults.reviewedAt)
+    };
+  }).filter((entry) => entry && (entry.source || entry.field || text(entry.value))).map((entry, index) => ({ id: `evidence-${index + 1}`, ...entry }));
+}
+
+function normalizeStandardReferences(entries, defaults = {}) {
+  const values = Array.isArray(entries) ? entries : (entries ? [entries] : []);
+  return values.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    return {
+      code: text(entry.code || entry.standardCode),
+      title: text(entry.title || entry.standardTitle),
+      version: text(entry.version || entry.standardVersion),
+      standardStatus: text(entry.standardStatus || entry.status),
+      clause: text(entry.clause),
+      page: Number(entry.page || entry.sourcePage) || null,
+      path: text(entry.path || entry.sourcePath || entry.sourceDocument),
+      excerpt: text(entry.excerpt || entry.sourceExcerpt),
+      reviewedBy: text(entry.reviewedBy || defaults.reviewedBy),
+      reviewedAt: text(entry.reviewedAt || defaults.reviewedAt)
+    };
+  }).filter(Boolean);
+}
+
+function verifiedStandardReference(reference) {
+  return Boolean(reference && reference.code && reference.version && ['current', 'effective'].includes(reference.standardStatus) &&
+    reference.clause && Number.isInteger(reference.page) && reference.page > 0 && reference.path && reference.excerpt &&
+    reference.reviewedBy && reference.reviewedAt);
 }
 
 function mappingMatchesComponent(mapping, component) {
@@ -136,6 +195,11 @@ function normalizeComponent(component, project = {}) {
   const normalized = { ...component };
   const mappings = Array.isArray(project.componentMappings) ? project.componentMappings : [];
   const mapping = mappings.find((item) => item.enabled !== false && mappingMatchesComponent(item, normalized));
+  normalized.sourceName = text(normalized.sourceName || normalized.name || normalized.shapeName) || null;
+  normalized.canonicalName = semanticText(mapping?.canonicalName || normalized.canonicalName || normalized.engineeringName ||
+    propertyValue(normalized, ['真实构件名称', '工程构件名称', '设备名称', '专业名称', 'CanonicalName', 'EngineeringName'])) || null;
+  normalized.standardName = semanticText(mapping?.standardName || normalized.standardName ||
+    propertyValue(normalized, ['规范正式名称', '规范构件名称', 'StandardName'])) || null;
   const explicitType = semanticText(normalized.semanticType || (normalized.componentType === 'BIMBase构件' ? '' : normalized.componentType) ||
     propertyValue(normalized, ['语义类型', '专业类型', '构件类型', '类别', 'Category', 'SemanticType']));
   normalized.semanticType = semanticText(mapping?.semanticType || mapping?.componentType || explicitType) || null;
@@ -148,9 +212,53 @@ function normalizeComponent(component, project = {}) {
     propertyValue(normalized, ['作用', '用途', '功能', 'Function', 'Role'])) || null;
   normalized.material = semanticText(mapping?.material || normalized.material || normalized.parameters?.material ||
     propertyValue(normalized, ['材料', '材质', 'Material'])) || null;
+  const evidence = [
+    ...normalizeEvidence(normalized.identityEvidence || normalized.identity?.evidence, { source: 'BIMBase' }),
+    ...normalizeEvidence(mapping?.evidence, {
+      type: 'reviewed-mapping', source: `工程映射 ${text(mapping?.id) || 'unnamed'}`,
+      reviewedBy: mapping?.reviewedBy, reviewedAt: mapping?.reviewedAt
+    })
+  ];
+  const standardReferences = normalizeStandardReferences(mapping?.standardReferences || normalized.standardReferences || normalized.standardMatch?.references, {
+    reviewedBy: mapping?.reviewedBy || normalized.standardMatch?.reviewedBy,
+    reviewedAt: mapping?.reviewedAt || normalized.standardMatch?.reviewedAt
+  });
+  const upstreamVerified = String(normalized.identityStatus || normalized.identity?.status || '').toLowerCase() === 'verified';
+  const mappingVerified = Boolean(mapping && text(mapping.reviewedBy) && text(mapping.reviewedAt) && evidence.length);
+  const completeIdentity = Boolean(normalized.canonicalName && normalized.systemType && normalized.assemblyType && normalized.semanticType);
+  const partialIdentity = Boolean(normalized.canonicalName || normalized.systemType || normalized.assemblyType || normalized.semanticType);
+  const identityStatus = completeIdentity && (upstreamVerified || mappingVerified) ? 'verified' : (partialIdentity ? 'partial' : 'unresolved');
+  const upstreamStandardVerified = String(normalized.standardMatchStatus || normalized.standardMatch?.status || '').toLowerCase() === 'verified';
+  const standardVerified = Boolean(normalized.standardName && standardReferences.some(verifiedStandardReference) && (mappingVerified || upstreamStandardVerified));
+  normalized.systemPath = [normalized.systemType, normalized.assemblyType, normalized.canonicalName].filter(Boolean);
+  normalized.identity = {
+    status: identityStatus,
+    sourceName: normalized.sourceName,
+    canonicalName: normalized.canonicalName,
+    systemPath: normalized.systemPath,
+    evidence,
+    reviewedBy: text(mapping?.reviewedBy || normalized.identity?.reviewedBy) || null,
+    reviewedAt: text(mapping?.reviewedAt || normalized.identity?.reviewedAt) || null,
+    missing: [
+      !normalized.canonicalName && 'canonicalName', !normalized.systemType && 'systemType',
+      !normalized.assemblyType && 'assemblyType', !normalized.semanticType && 'semanticType',
+      !(upstreamVerified || mappingVerified) && 'verifiedEvidence'
+    ].filter(Boolean)
+  };
+  normalized.standardMatch = {
+    status: standardVerified ? 'verified' : (normalized.standardName || standardReferences.length ? 'partial' : 'unresolved'),
+    standardName: normalized.standardName,
+    references: standardReferences,
+    reviewedBy: text(mapping?.reviewedBy || normalized.standardMatch?.reviewedBy) || null,
+    reviewedAt: text(mapping?.reviewedAt || normalized.standardMatch?.reviewedAt) || null,
+    missing: [
+      !normalized.standardName && 'standardName',
+      !standardReferences.some(verifiedStandardReference) && 'verifiedStandardReference'
+    ].filter(Boolean)
+  };
   normalized.classification = {
-    status: normalized.semanticType && normalized.systemType ? 'classified' :
-      (normalized.semanticType || normalized.systemType || normalized.assemblyType ? 'partial' : 'unclassified'),
+    status: identityStatus === 'verified' ? 'classified' :
+      (normalized.canonicalName || normalized.semanticType || normalized.systemType || normalized.assemblyType ? 'partial' : 'unclassified'),
     source: mapping ? `project-mapping:${text(mapping.id) || 'unnamed'}` : 'bim-properties',
     shapeNameUsed: false
   };
@@ -192,6 +300,21 @@ function formatExpected(rule) {
   return `${rule.operator} ${rule.value}${suffix}${toleranceText}`;
 }
 
+function ruleCitation(rule) {
+  return {
+    title: text(rule.standardTitle) || text(rule.sourceDocument) || text(rule.standardCode),
+    code: text(rule.standardCode),
+    version: text(rule.standardVersion),
+    standardStatus: text(rule.standardStatus),
+    clause: text(rule.clause),
+    page: Number(rule.sourcePage),
+    path: text(rule.sourcePath || rule.sourceDocument),
+    excerpt: text(rule.sourceExcerpt),
+    verifiedBy: text(rule.reviewedBy),
+    verifiedAt: text(rule.reviewedAt)
+  };
+}
+
 function sourceView(result) {
   return {
     title: result.title,
@@ -200,6 +323,15 @@ function sourceView(result) {
     path: result.path,
     excerpt: text(result.text).replace(/\s+/g, ' ').slice(0, 280)
   };
+}
+
+function uniqueSources(sources = []) {
+  const values = new Map();
+  for (const source of sources.flat(Infinity).filter(Boolean)) {
+    const key = [source.code, source.clause, source.page, source.path, source.title].map(text).join('|');
+    if (key && !values.has(key)) values.set(key, source);
+  }
+  return [...values.values()];
 }
 
 export class BimDoctor {
@@ -220,7 +352,7 @@ export class BimDoctor {
     try {
       await fs.access(this.contextFile);
     } catch {
-      await fs.writeFile(this.contextFile, JSON.stringify({ schemaVersion: 1, revision: 0, mappings: [] }, null, 2));
+      await fs.writeFile(this.contextFile, JSON.stringify({ schemaVersion: 2, revision: 0, mappings: [] }, null, 2));
     }
   }
 
@@ -245,11 +377,19 @@ export class BimDoctor {
     const components = (job.components || []).map((component) => normalizeComponent(component, job.project));
     const classified = components.filter((component) => component.classification.status === 'classified').length;
     const partial = components.filter((component) => component.classification.status === 'partial').length;
+    const identityVerified = components.filter((component) => component.identity.status === 'verified').length;
+    const identityPartial = components.filter((component) => component.identity.status === 'partial').length;
+    const standardMatched = components.filter((component) => component.standardMatch.status === 'verified').length;
     const summary = job.summary || {};
     const complianceStatus = summary.fail > 0 ? 'FAIL'
-      : summary.needData > 0 ? 'NEED_DATA'
-        : summary.needRule > 0 ? 'NEED_RULE'
-          : summary.total > 0 && summary.pass === summary.total ? 'PASS' : 'NEED_DATA';
+      : summary.needIdentity > 0 ? 'NEED_IDENTITY'
+        : summary.needStandard > 0 ? 'NEED_STANDARD'
+          : summary.needRule > 0 ? 'NEED_RULE'
+            : summary.needData > 0 ? 'NEED_DATA'
+              : summary.total > 0 && summary.pass === summary.total ? 'PASS' : 'NEED_DATA';
+    const citations = uniqueSources((job.results || []).flatMap((result) => [
+      ...(result.sources || []), ...(result.issues || []).flatMap((issue) => issue.sources || [])
+    ]));
     return {
       scope: 'project',
       project: job.project,
@@ -257,16 +397,27 @@ export class BimDoctor {
       componentCount: components.length,
       modelCount: new Set(components.map((component) => text(component.modelId)).filter(Boolean)).size,
       modelGroups: groupModels(components),
+      nativeGroups: Array.isArray(job.project?.nativeGroups) ? job.project.nativeGroups : [],
       systems: groupComponents(components, 'systemType', '未识别系统'),
       assemblies: groupComponents(components, 'assemblyType', '未识别整体组件'),
+      standardNames: groupComponents(components, 'standardName', '未匹配规范正式名称'),
       componentTypes: groupComponents(components, 'semanticType', '未识别构件类型'),
       materials: groupComponents(components, 'material', '未识别材质'),
-      dataQuality: { classified, partial, unclassified: components.length - classified - partial },
-      compliance: { status: complianceStatus, summary },
+      dataQuality: {
+        classified, partial, unclassified: components.length - classified - partial,
+        identityVerified, identityPartial, identityUnresolved: components.length - identityVerified - identityPartial,
+        standardMatched, standardUnmatched: components.length - standardMatched
+      },
+      compliance: { status: complianceStatus, summary, citations },
+      citations,
       components: components.slice(0, 200).map((component) => ({
         entityId: component.entityId,
         modelId: component.modelId ?? null,
         elementId: component.elementId ?? null,
+        sourceName: component.sourceName,
+        canonicalName: component.canonicalName,
+        standardName: component.standardName,
+        systemPath: component.systemPath,
         systemType: component.systemType,
         assemblyType: component.assemblyType,
         semanticType: component.semanticType,
@@ -275,6 +426,8 @@ export class BimDoctor {
         schemaName: component.schemaName || null,
         className: component.componentTypeRaw || null,
         levelName: component.levelName || null,
+        identity: component.identity,
+        standardMatch: component.standardMatch,
         classification: component.classification
       })),
       truncated: components.length > 200
@@ -286,7 +439,9 @@ export class BimDoctor {
     const bridge = await this.getBridgeState();
     if (!jobs.length) return { bridge, job: null, project: null, projectProfile: null, projectCompliance: null, component: null, result: null };
     const projectKey = (job) => text(job.project?.path || job.project?.fileName || `${job.project?.source || 'BIMBase'}:${job.project?.name || ''}`);
-    const bridgeProjectKey = text(bridge.project?.path || bridge.project?.fileName || (bridge.project?.name && `BIMBase:${bridge.project.name}`));
+    const bridgeProjectName = text(bridge.project?.name);
+    const bridgeProjectKey = text(bridge.project?.path || bridge.project?.fileName ||
+      (bridgeProjectName && !/^(BIMBase\s*)?当前工程$/.test(bridgeProjectName) ? `BIMBase:${bridgeProjectName}` : ''));
     let projectView = jobs.find((job) => job.project?.checkScope === 'project' && (!bridgeProjectKey || projectKey(job) === bridgeProjectKey))
       || (bridgeProjectKey ? jobs.find((job) => projectKey(job) === bridgeProjectKey) : null)
       || jobs.find((job) => job.project?.checkScope === 'project') || jobs[0];
@@ -389,8 +544,8 @@ export class BimDoctor {
   async getContextMappings() {
     try {
       const payload = JSON.parse(await fs.readFile(this.contextFile, 'utf8'));
-      return { schemaVersion: Number(payload.schemaVersion) || 1, revision: Number(payload.revision) || 0, updatedAt: payload.updatedAt || null, mappings: payload.mappings || [] };
-    } catch { return { schemaVersion: 1, revision: 0, updatedAt: null, mappings: [] }; }
+      return { schemaVersion: Number(payload.schemaVersion) || 3, revision: Number(payload.revision) || 0, updatedAt: payload.updatedAt || null, mappings: payload.mappings || [] };
+    } catch { return { schemaVersion: 3, revision: 0, updatedAt: null, mappings: [] }; }
   }
 
   async setContextMappings(mappings, meta = {}) {
@@ -403,14 +558,30 @@ export class BimDoctor {
       }
       const componentMappings = (mapping.componentMappings || []).map((item, componentIndex) => {
         if (!item || (!item.when && !item.match)) throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少 when`);
-        if (!['semanticType', 'componentType', 'systemType', 'assemblyType', 'role', 'material'].some((field) => text(item[field]))) {
+        if (!['canonicalName', 'semanticType', 'componentType', 'systemType', 'assemblyType', 'role', 'material'].some((field) => text(item[field]))) {
           throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少分类结果`);
         }
-        return { enabled: item.enabled !== false, id: text(item.id) || `component-${componentIndex + 1}`, ...item };
+        if (!text(item.reviewedBy) || !text(item.reviewedAt)) {
+          throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少 reviewedBy/reviewedAt`);
+        }
+        if (!Array.isArray(item.evidence) || !normalizeEvidence(item.evidence).length) {
+          throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少 evidence`);
+        }
+        const when = item.when;
+        const stableLocator = when && typeof when === 'object' && !Array.isArray(when) &&
+          (text(when.entityId) || (text(when.modelId) && text(when.elementId)));
+        if (!stableLocator) {
+          throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射必须使用 entityId 或 modelId+elementId 独立定位`);
+        }
+        const standardReferences = normalizeStandardReferences(item.standardReferences, { reviewedBy: item.reviewedBy, reviewedAt: item.reviewedAt });
+        if (!text(item.standardName) || !standardReferences.some(verifiedStandardReference)) {
+          throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少规范正式名称或完整规范依据`);
+        }
+        return { ...item, enabled: item.enabled !== false, id: text(item.id) || `component-${componentIndex + 1}` };
       });
-      return { enabled: mapping.enabled !== false, id: text(mapping.id) || `context-${index + 1}`, ...mapping, match: text(mapping.match), componentMappings };
+      return { ...mapping, enabled: mapping.enabled !== false, id: text(mapping.id) || `context-${index + 1}`, match: text(mapping.match), componentMappings };
     });
-    const document = { schemaVersion: 1, revision: current.revision + 1, updatedAt: new Date().toISOString(), mappings: normalized };
+    const document = { schemaVersion: 3, revision: current.revision + 1, updatedAt: new Date().toISOString(), mappings: normalized };
     await fs.writeFile(`${this.contextFile}.tmp`, JSON.stringify(document, null, 2));
     await fs.rename(`${this.contextFile}.tmp`, this.contextFile);
     await fs.appendFile(path.join(this.dataDir, 'rule-audit.jsonl'), `${JSON.stringify({ action: 'context-mapping', revision: document.revision, updatedAt: document.updatedAt, actor: text(meta.actor) || 'system', reason: text(meta.reason), mappingCount: normalized.length })}\n`);
@@ -450,10 +621,19 @@ export class BimDoctor {
       if (rule.enabled !== false && (!text(rule.unit) || !text(rule.reviewedBy) || !text(rule.version))) {
         throw httpError(`第 ${index + 1} 条启用规则必须填写 unit、reviewedBy 和 version`);
       }
+      if (rule.enabled !== false && (!text(rule.reviewedAt) || !text(rule.standardVersion))) {
+        throw httpError(`第 ${index + 1} 条启用规则必须填写 reviewedAt 和 standardVersion`);
+      }
+      if (rule.enabled !== false && !standardStatuses.has(text(rule.standardStatus))) {
+        throw httpError(`第 ${index + 1} 条启用规则的 standardStatus 必须是 current/effective`);
+      }
+      if (rule.enabled !== false && (!text(rule.sourceDocument) || !Number.isInteger(Number(rule.sourcePage)) || Number(rule.sourcePage) < 1 || !text(rule.sourceExcerpt))) {
+        throw httpError(`第 ${index + 1} 条启用规则必须填写 sourceDocument、sourcePage 和 sourceExcerpt`);
+      }
       if (rule.enabled !== false && operator !== 'exists' && (rule.value === undefined || rule.value === null || rule.value === '')) {
         throw httpError(`第 ${index + 1} 条启用规则必须填写 value`);
       }
-      const scopeFields = ['projectTypes', 'disciplines', 'systemTypes', 'assemblyTypes', 'componentTypes'];
+      const scopeFields = ['projectTypes', 'disciplines', 'systemTypes', 'assemblyTypes', 'standardNames', 'componentTypes'];
       if (rule.enabled !== false && !scopeFields.some((field) => Array.isArray(rule[field]) && rule[field].some((value) => text(value)))) {
         throw httpError(`第 ${index + 1} 条启用规则必须至少指定一个工程/系统/组件语义范围`);
       }
@@ -526,7 +706,7 @@ export class BimDoctor {
       updatedAt: now,
       components: [],
       results: [],
-      summary: { total: 0, pass: 0, fail: 0, warning: 0, needRule: 0, needData: 0, error: 0 }
+      summary: { total: 0, pass: 0, fail: 0, warning: 0, needIdentity: 0, needStandard: 0, needRule: 0, needData: 0, error: 0 }
     };
     await this.addComponentsToJob(job, components);
     await this.writeJob(job);
@@ -565,17 +745,41 @@ export class BimDoctor {
   }
 
   evaluateComponent(component, rules, sourceCache, project = {}) {
+    if (component.identity?.status !== 'verified') {
+      return {
+        entityId: component.entityId,
+        status: 'NEED_IDENTITY',
+        summary: `真实构件身份尚未核实，缺少：${identityMissingText(component.identity?.missing)}。`,
+        issues: [],
+        sources: [],
+        identity: component.identity || null
+      };
+    }
+    if (component.standardMatch?.status !== 'verified') {
+      const context = complianceContext(project, component);
+      const sources = context ? this.searchSources(`${context} 规范正式名称 构件组成`, sourceCache) : [];
+      return {
+        entityId: component.entityId,
+        status: 'NEED_STANDARD',
+        summary: `尚未核实该构件与规范正式名称的对应关系，缺少：${(component.standardMatch?.missing || ['standardName']).map((field) => ({ standardName: '规范正式名称', verifiedStandardReference: '完整规范依据' }[field] || field)).join('、')}。`,
+        issues: [],
+        sources,
+        identity: component.identity || null,
+        standardMatch: component.standardMatch || null
+      };
+    }
     const applicable = rules.filter((rule) => rule.enabled !== false && matchesComponent(rule, component, project));
     if (!applicable.length) {
       const context = complianceContext(project, component);
+      const sources = context ? this.searchSources(`${context} 适用规范 设计要求`, sourceCache) : [];
       return {
         entityId: component.entityId,
-        status: 'NEED_RULE',
-        summary: context
-          ? '已检索候选规范，但尚无经审核的机器判定规则。'
-          : '尚未取得工程专业、系统、整体组件或构件语义，无法可靠检索适用规范。',
+        status: sources.length ? 'NEED_RULE' : 'NEED_STANDARD',
+        summary: sources.length
+          ? '已找到与真实构件身份相关的候选规范，但尚无经审核的机器判定规则。'
+          : '规范库中尚未找到与该真实构件身份直接匹配的可靠条文，需要补充或审核适用规范。',
         issues: [],
-        sources: context ? this.searchSources(`${context} 适用规范 设计要求`, sourceCache) : []
+        sources
       };
     }
 
@@ -584,6 +788,8 @@ export class BimDoctor {
       const missing = actual === undefined || actual === null || actual === '';
       const passed = !missing && compare(actual, rule.operator, rule.value, { unit: rule.unit, tolerance: rule.tolerance });
       const query = rule.query || `${rule.standardCode || ''} ${rule.clause || ''} ${rule.title || complianceContext(project, component)}`;
+      const citation = ruleCitation(rule);
+      const retrieved = this.searchSources(query, sourceCache).filter((source) => !citation.code || text(source.code).includes(citation.code) || citation.code.includes(text(source.code)));
       return {
         ruleId: rule.id,
         status: missing ? 'NEED_DATA' : (passed ? 'PASS' : 'FAIL'),
@@ -596,7 +802,7 @@ export class BimDoctor {
         standardCode: rule.standardCode || null,
         clause: rule.clause || null,
         suggestion: passed ? null : (rule.suggestion || `请核验并调整 ${rule.field}`),
-        sources: this.searchSources(query, sourceCache)
+        sources: uniqueSources([citation, ...retrieved])
       };
     });
     const status = issues.some((issue) => issue.status === 'FAIL')
@@ -607,7 +813,9 @@ export class BimDoctor {
       status,
       summary: status === 'PASS' ? '已启用规则全部通过。' : `${issues.filter((issue) => issue.status !== 'PASS').length} 项需要处理。`,
       issues,
-      sources: []
+      sources: uniqueSources(issues.flatMap((issue) => issue.sources || [])),
+      identity: component.identity,
+      standardMatch: component.standardMatch
     };
   }
 
@@ -631,6 +839,8 @@ export class BimDoctor {
       pass: count('PASS'),
       fail: count('FAIL'),
       warning: count('WARNING'),
+      needIdentity: count('NEED_IDENTITY'),
+      needStandard: count('NEED_STANDARD'),
       needRule: count('NEED_RULE'),
       needData: count('NEED_DATA'),
       error: count('ERROR')
@@ -645,14 +855,21 @@ export class BimDoctor {
   async reportCsv(id) {
     const job = await this.readJob(id);
     const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const rows = [['项目', '快照版本', '构件ID', '结论', '规则ID', '检查项', '字段', '实际值', '期望值', '规范编号', '条文号']];
+    const components = new Map((job.components || []).map((component) => [text(component.entityId), normalizeComponent(component, job.project)]));
+    const rows = [['项目', '快照版本', '构件ID', '原始名称', '真实专业名称', '规范正式名称', '系统路径', '身份状态', '规范对应状态', '结论', '规则ID', '检查项', '字段', '实际值', '期望值', '规范编号', '规范版本', '条文号', 'PDF页码', '原文摘录']];
     for (const result of job.results || []) {
+      const component = components.get(text(result.entityId)) || {};
       const issues = result.issues?.length ? result.issues : [{}];
-      for (const issue of issues) rows.push([
-        job.project?.name, job.project?.snapshotVersion, result.entityId, result.status,
-        issue.ruleId, issue.title, issue.field, issue.actual, issue.expected,
-        issue.standardCode, issue.clause
-      ]);
+      for (const issue of issues) {
+        const citation = issue.sources?.[0] || result.sources?.[0] || {};
+        rows.push([
+          job.project?.name, job.project?.snapshotVersion, result.entityId, component.sourceName, component.canonicalName, component.standardName,
+          (component.systemPath || []).join(' / '), component.identity?.status, component.standardMatch?.status, result.status,
+          issue.ruleId, issue.title, issue.field, issue.actual, issue.expected,
+          issue.standardCode || citation.code, citation.version, issue.clause || citation.clause,
+          citation.page, citation.excerpt
+        ]);
+      }
     }
     return `\uFEFF${rows.map((row) => row.map(escape).join(',')).join('\r\n')}\r\n`;
   }
@@ -697,6 +914,10 @@ export class BimDoctor {
     if (!includeComponents) delete view.components;
     if (!includeResults) delete view.results;
     return view;
+  }
+
+  componentView(component, project = {}) {
+    return component ? normalizeComponent(component, project) : null;
   }
 }
 

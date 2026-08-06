@@ -24,6 +24,16 @@ ALIASES = {
     "storey": ("楼层", "标高层", "storey", "Storey")
 }
 
+IDENTITY_ALIASES = {
+    "canonicalName": ("真实构件名称", "工程构件名称", "设备名称", "专业名称", "CanonicalName", "EngineeringName"),
+    "standardName": ("规范正式名称", "规范构件名称", "StandardName"),
+    "semanticType": ("语义类型", "专业类型", "构件类型", "类别", "Category", "SemanticType"),
+    "systemType": ("系统类型", "所属系统", "系统", "SystemType"),
+    "assemblyType": ("整体组件类型", "所属组件", "组件类型", "AssemblyType"),
+    "role": ("作用", "用途", "功能", "Function", "Role"),
+    "material": ("材料", "材质", "Material")
+}
+
 
 def scalar(value):
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -100,6 +110,36 @@ def normalize_parameters(raw):
             value = abs(float(match.group(0))) if match else value
         result[name] = value
     return result
+
+
+def identity_fields(raw, source="BIMBase p3d"):
+    fields = {}
+    evidence = []
+    for name, aliases in IDENTITY_ALIASES.items():
+        value = first_value(raw, aliases)
+        if value in (None, ""):
+            continue
+        fields[name] = value
+        evidence.append({
+            "type": "bim-property",
+            "source": source,
+            "field": name,
+            "value": value,
+            "verified": False
+        })
+    return fields, evidence
+
+
+def json_object(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        except Exception:
+            return {"value": value}
+    return value
 
 
 def read_property_panel(script_path):
@@ -318,6 +358,8 @@ def base_component(entity_id):
         "modelId": model_id,
         "elementId": element_id,
         "name": "BIMBase构件 %s" % entity_token,
+        "sourceName": "BIMBase构件 %s" % entity_token,
+        "canonicalName": None,
         "componentType": "BIMBase构件",
         "componentTypeRaw": None,
         "schemaName": None,
@@ -325,6 +367,8 @@ def base_component(entity_id):
         "geometry": {},
         "extendedProperties": None,
         "rawProperties": {},
+        "identityStatus": "unresolved",
+        "identityEvidence": [],
         "extractionErrors": ["DETAIL_SKIPPED: 默认稳定模式仅读取 EntityId/ModelId，避免 BIMBase SDK 属性接口阻塞。设置环境变量 BIM_DOCTOR_READ_DETAILS=1 可启用详细属性读取。"]
     }
 
@@ -354,13 +398,18 @@ def enrich_component_details(sdk, entity_id, component):
         raw = noumenon_properties(noumenon)
         component["rawProperties"] = raw
         component["parameters"] = normalize_parameters(raw)
-        class_name = safe_attr(noumenon, "className")
-        schema_name = safe_attr(noumenon, "schemaName")
-        component_type = first_value(raw, ("Category", "类别", "类型", "构件类型"))
-        component["name"] = first_value(raw, ALIASES["name"]) or class_name or component["name"]
-        component["componentType"] = component_type or class_name or component["componentType"]
+        class_name = first_value(raw, ("\a_class_name", "__class_name", "className"))
+        schema_name = first_value(raw, ("\a_schema_name", "__schema_name", "schemaName"))
+        identity, evidence = identity_fields(raw)
+        source_name = first_value(raw, ALIASES["name"]) or class_name or component["name"]
+        component["name"] = source_name
+        component["sourceName"] = source_name
+        component.update(identity)
+        component["componentType"] = identity.get("semanticType")
         component["componentTypeRaw"] = class_name
         component["schemaName"] = schema_name
+        component["identityStatus"] = "observed" if identity else "unresolved"
+        component["identityEvidence"] = evidence
         extraction_log("detail %s: get_noumenon_on_entityid done props=%d" % (entity_token, len(raw)))
     except Exception as error:
         errors.append("noumenon: %s" % error)
@@ -374,19 +423,20 @@ def enrich_component_details(sdk, entity_id, component):
 
     if data_key is not None:
         extraction_log("detail %s: extended properties start" % entity_token)
-        component["extendedProperties"] = safe_call(sdk.get_extended_property_json, data_key)
+        component["extendedProperties"] = json_object(safe_call(sdk.get_extended_property_json, data_key))
         extraction_log("detail %s: extended properties done" % entity_token)
 
     component["extractionErrors"] = [e for e in errors if not str(e).startswith("DETAIL_SKIPPED")]
     return component
 
 
-def extract_components(scope="all"):
+def extract_components(scope="all", read_details=None):
     sdk = load_sdk()
     entity_ids = project_entity_ids(sdk, scope)
     metadata = entity_property_metadata(sdk, entity_ids)
 
-    read_details = os.environ.get("BIM_DOCTOR_READ_DETAILS") == "1"
+    if read_details is None:
+        read_details = os.environ.get("BIM_DOCTOR_READ_DETAILS") == "1"
     extraction_log("extract_components scope=%s ids=%d read_details=%s" % (scope, len(entity_ids), read_details))
 
     components = []
@@ -404,19 +454,65 @@ def extract_components(scope="all"):
     return components, runtime_ids
 
 
+def extract_native_groups(sdk=None, class_ids=None):
+    """读取 BIMBase 原生组合节点；原始组合名仅作来源证据，不当作专业名称。"""
+    sdk = sdk or load_sdk()
+    class_ids = set(int(value) for value in (class_ids or [1133]))
+    getter = getattr(sdk, "get_all_instancekey", None) or getattr(sdk, "get_all_datakey", None)
+    if not getter:
+        return []
+    groups = []
+    for key in getter() or []:
+        if safe_attr(key, "_PClassId") not in class_ids:
+            continue
+        try:
+            noumenon = sdk.get_noumenon_from_instancekey(key)
+            raw = noumenon_properties(noumenon)
+            class_name = first_value(raw, ("\a_class_name", "__class_name", "className"))
+            if class_name != "PBGroup":
+                continue
+            source_name = first_value(raw, ("GroupName",)) or object_token(key)
+            bindings = []
+            binding_getter = getattr(sdk, "get_allbinding_entity_from_instance", None)
+            if binding_getter:
+                bindings = [object_token(value) for value in (binding_getter(key) or []) if hasattr(value, "_ElementId")]
+            groups.append({
+                "groupId": object_token(key),
+                "sourceName": source_name,
+                "canonicalName": None,
+                "parentSourceName": first_value(raw, ("FatherGroupName",)),
+                "topParentId": first_value(raw, ("GroupTopFatherId",)),
+                "memberEntityIds": bindings,
+                "identityStatus": "unresolved",
+                "identityEvidence": [{
+                    "type": "bim-native-group", "source": "BIMBase PBGroup",
+                    "field": "GroupName", "value": source_name, "verified": False
+                }]
+            })
+        except Exception as error:
+            extraction_log("native group %s error %s" % (object_token(key), error))
+    return groups
+
+
 def extract_selected_component(panel_script):
     sdk = load_sdk()
     selected = [value for value in value_list(sdk.get_entityid_from_boxselection()) if is_entity_id(value)]
     if not selected:
         raise RuntimeError("请先选中一个构件")
     entity_id = selected[0]
-    component = base_component(entity_id)
+    component = enrich_component_details(sdk, entity_id, base_component(entity_id))
     raw = read_property_panel(panel_script)
-    component["rawProperties"] = raw
-    component["parameters"] = normalize_parameters(raw)
-    component["name"] = first_value(raw, ALIASES["name"]) or component["name"]
-    component["shapeName"] = component["name"]
-    component["componentType"] = None
+    component["rawProperties"] = dict(component.get("rawProperties") or {}, **raw)
+    component["parameters"].update(normalize_parameters(raw))
+    source_name = first_value(raw, ALIASES["name"]) or component["sourceName"]
+    identity, evidence = identity_fields(raw, "BIMBase 属性面板")
+    component["name"] = source_name
+    component["sourceName"] = source_name
+    component["shapeName"] = source_name
+    component.update(identity)
+    component["componentType"] = component.get("semanticType")
+    component["identityEvidence"] = (component.get("identityEvidence") or []) + evidence
+    component["identityStatus"] = "observed" if component["identityEvidence"] else "unresolved"
     component["geometry"] = {
         key: value for key, aliases in {
             "volume": ("体积", "volume"),
@@ -508,15 +604,21 @@ def main():
     parser.add_argument("--scope", choices=("all", "active-model"), default="all")
     parser.add_argument("--demo", action="store_true", help="不连接 BIMBase，发送两个演示构件")
     parser.add_argument("--probe", metavar="PATH", help="只提取构件并写入 JSON，不发送")
+    parser.add_argument("--identity-details", action="store_true", help="逐构件读取身份属性，适用于真实构件导入后的深度扫描")
     args = parser.parse_args()
     config = load_config(args.config)
-    components = demo_components() if args.demo else extract_components(args.scope)[0]
+    components = demo_components() if args.demo else extract_components(
+        args.scope, args.identity_details or bool(config.get("readIdentityDetails", False))
+    )[0]
     if args.probe:
         with open(args.probe, "w", encoding="utf-8") as stream:
             json.dump(components, stream, ensure_ascii=False, indent=2)
         print("已写入：%s" % args.probe)
         return 0
-    result = send_job(config, components)
+    project = detect_project_context(config)
+    if not args.demo:
+        project["nativeGroups"] = extract_native_groups(class_ids=config.get("nativeGroupClassIds"))
+    result = send_job(config, components, project)
     summary = result.get("summary", {})
     print("构件医生完成：总数 %(total)s，通过 %(pass)s，不符合 %(fail)s，待规则 %(needRule)s，缺数据 %(needData)s，异常 %(error)s" % summary)
     print("任务 ID：%s" % result.get("id"))

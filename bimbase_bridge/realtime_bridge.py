@@ -28,16 +28,23 @@ def panel_component(raw):
         return None
     name = bridge.first_value(raw, bridge.ALIASES["name"]) or "BIMBase构件"
     parts = packed_entity_parts(entity)
+    identity, evidence = bridge.identity_fields(raw, "BIMBase 属性面板")
     component = {
         "entityId": "%s:%s" % parts if parts else "ui:%s" % entity,
         "modelId": parts[0] if parts else None,
         "elementId": parts[1] if parts else str(entity),
         "name": name,
+        "sourceName": name,
+        "canonicalName": identity.get("canonicalName"),
         "shapeName": name,
-        "componentType": bridge.first_value(raw, ("构件类型", "类别", "分类", "ComponentType")),
-        "semanticType": bridge.first_value(raw, ("语义类型", "专业类型", "SemanticType")),
-        "systemType": bridge.first_value(raw, ("系统类型", "系统", "SystemType")),
-        "assemblyType": bridge.first_value(raw, ("整体组件类型", "组件类型", "AssemblyType")),
+        "componentType": identity.get("semanticType"),
+        "semanticType": identity.get("semanticType"),
+        "systemType": identity.get("systemType"),
+        "assemblyType": identity.get("assemblyType"),
+        "role": identity.get("role"),
+        "material": identity.get("material"),
+        "identityStatus": "observed" if identity else "unresolved",
+        "identityEvidence": evidence,
         "parameters": bridge.normalize_parameters(raw),
         "geometry": {key: value for key, aliases in {
             "volume": ("体积", "volume"), "area": ("表面积", "面积", "area")

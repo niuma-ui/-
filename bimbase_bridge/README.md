@@ -19,6 +19,14 @@
 
 整体工程采用“工程 → 系统 → 整体组件 → 语义构件”分层画像。分类只使用 `.p3d` 工程身份、SDK 语义属性和 `bim-doctor-context.json` 中经确认的 `componentMappings`；形状名称不参与分类。无法确认的系统、作用、材质和类型会显示为“未识别”，不会自动猜测。规范助手会同时取得最新整体工程画像和最新单构件上下文，并根据问题选择对应范围。
 
+每个构件同时保存 BIMBase 原始名称 `sourceName`、经审核的真实专业名称 `canonicalName`、系统路径和身份依据。原始名称及“组合1”等原生组名只作为来源证据；只有真实名称、系统、整体组件、语义类型和审核证据齐全时，身份状态才是 `verified`。未核实身份返回 `NEED_IDENTITY`，不会进入合规判定。
+
+工程数据完整保存在独立的工程证据索引中，不会混入规范原文库。每个构件必须用稳定的 `EntityId` 或 `ModelId+ElementId` 独立审核，并填写规范正文中的 `standardName`；只有规范编号、现行版本、条款、PDF页码、原文摘录和审核记录齐全时，规范对应状态才是 `verified`。未完成规范名称对应返回 `NEED_STANDARD`，即使真实专业名称已经确认也不会判定合格。
+
+真实构件导入后，在 BIMBase 中运行“工具 - 构件医生 - 深度识别真实组件”。该模式逐构件读取实例 Schema/Class、身份属性和原生组合节点，耗时高于普通检查。读取结果仍需通过工程分类映射审核，不能仅按同名构件套用规范。
+
+启用的机器规则必须包含规范编号与版本、条款号、PDF 文件、页码、原文摘录、审核人和审核时间。规范库缺少直接匹配条文时返回 `NEED_STANDARD`；候选规范尚未形成审核规则时返回 `NEED_RULE`；参数缺失返回 `NEED_DATA`。
+
 ## 运行
 
 先双击项目根目录的 `启动知识库.cmd`，或执行：
@@ -40,6 +48,7 @@ python bimbase_bridge/bridge.py --demo
 bridge.py --scope all
 bridge.py --scope active-model
 bridge.py --scope all --probe D:\bim-components.json
+bridge.py --scope all --identity-details
 ```
 
 远程桥接时，服务端设置 `BIM_BRIDGE_TOKEN`，并把相同值写入 `config.json`。未设置令牌时接口只接受本机回环连接。
