@@ -400,7 +400,7 @@ function doctorContextTerms(snapshot) {
   const project = snapshot.project || {};
   const profile = snapshot.projectProfile || {};
   const component = snapshot.component || {};
-  return [project.type, project.discipline, project.name, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType,
+  return [project.type, project.discipline, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType,
     ...(profile.systems || []).map((item) => item.name), ...(profile.assemblies || []).map((item) => item.name), ...(profile.componentTypes || []).map((item) => item.name)]
     .map((value) => String(value || '').trim())
     .filter((value, index, values) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别)/.test(value) && values.indexOf(value) === index);
@@ -486,7 +486,13 @@ const server = http.createServer(async (request, response) => {
         }
         const terms = doctorContextTerms(snapshot);
         if (!terms.length) {
-          json(response, 200, { answer: '尚未识别项目类型、专业、系统或整体组件，无法准确定位适用规范。请先通过实时桥接取得工程和组件语义；构件形状名称不作为规范分类依据。', sources: [], documents: [], suggestions: [], mode: 'context-required', compliance, snapshot });
+          const profile = snapshot.projectProfile || {};
+          const component = snapshot.component || {};
+          const modelGroups = (profile.modelGroups || []).map((item) => `${item.name}（${item.count}个实体）`).join('、');
+          const answer = scope === 'project'
+            ? `当前工程已识别 ${profile.componentCount || 0} 个实体、${profile.modelCount || 0} 个整体模型组${modelGroups ? `：${modelGroups}` : ''}。p3d 暂未提供可验证的系统、语义构件类型、作用和材质，不能据形状名称猜测。请在工程分类映射中补充经确认的 ModelId 语义后再定位规范。`
+            : `当前构件为 ${component.entityId || '未选中'}${component.modelId != null ? `，所属模型 ${component.modelId}` : ''}。p3d 暂未提供可验证的语义类型、作用和材质，不能据形状名称猜测。请在工程分类映射中补充经确认的 ModelId/EntityId 语义。`;
+          json(response, 200, { answer, sources: [], documents: [], suggestions: [], mode: 'context-required', compliance, snapshot });
           return;
         }
         const probe = knowledge.search(`${terms.join(' ')} ${question}`, 8);

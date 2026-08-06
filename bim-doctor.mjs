@@ -91,7 +91,6 @@ function complianceContext(project, component) {
   return [
     project.type,
     project.discipline,
-    project.name,
     component.systemType,
     component.system,
     component.assemblyType,
@@ -568,13 +567,15 @@ export class BimDoctor {
   evaluateComponent(component, rules, sourceCache, project = {}) {
     const applicable = rules.filter((rule) => rule.enabled !== false && matchesComponent(rule, component, project));
     if (!applicable.length) {
-      const query = `${complianceContext(project, component) || '工程整体 构件系统'} 适用规范 设计要求`;
+      const context = complianceContext(project, component);
       return {
         entityId: component.entityId,
         status: 'NEED_RULE',
-        summary: '已检索候选规范，但尚无经审核的机器判定规则。',
+        summary: context
+          ? '已检索候选规范，但尚无经审核的机器判定规则。'
+          : '尚未取得工程专业、系统、整体组件或构件语义，无法可靠检索适用规范。',
         issues: [],
-        sources: this.searchSources(query, sourceCache)
+        sources: context ? this.searchSources(`${context} 适用规范 设计要求`, sourceCache) : []
       };
     }
 

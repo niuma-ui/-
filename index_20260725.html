@@ -240,7 +240,7 @@
                 <div class="doctor-job-list" id="doctorJobList"><p class="doctor-empty">BIMBase 提交检查后，任务会显示在这里。</p></div>
               </section>
               <section class="doctor-results" aria-labelledby="doctorResultsTitle">
-                <div class="doctor-section-head"><h3 id="doctorResultsTitle">构件结果</h3><div class="doctor-result-actions"><span id="doctorResultCount">未选择任务</span><button class="doctor-command" id="doctorReport" type="button" disabled>导出报告</button></div></div>
+                <div class="doctor-section-head"><h3 id="doctorResultsTitle">构件结果</h3><div class="doctor-result-actions"><input id="doctorResultFilter" type="search" aria-label="筛选构件 ID" placeholder="筛选构件 ID"><span id="doctorResultCount">未选择任务</span><button class="doctor-command" id="doctorReport" type="button" disabled>导出报告</button></div></div>
                 <div class="doctor-result-list" id="doctorResultList"><p class="doctor-empty">选择一项检查任务查看构件结论和规范依据。</p></div>
               </section>
             </div>
@@ -1030,7 +1030,9 @@
       'use strict';
       var panel = document.getElementById('doctorPanel');
       if (!panel) return;
+      document.body.appendChild(panel);
       var selectedId = null;
+      var selectedJob = null;
       var jobs = [];
       var $ = function (id) { return document.getElementById(id); };
       var esc = function (value) { return String(value == null ? '' : value).replace(/[&<>\"']/g, function (char) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[char]; }); };
@@ -1063,26 +1065,33 @@
         $('doctorProjectQuality').textContent = '构件 ' + (profile.componentCount || 0) + ' · 完整分类 ' + (quality.classified || 0) + ' · 部分分类 ' + (quality.partial || 0) + ' · 待识别 ' + (quality.unclassified || 0);
       }
       function renderResults(job) {
+        selectedJob = job;
         var summary = job && job.summary || {};
         $('doctorTotal').textContent = summary.total == null ? '—' : summary.total;
         $('doctorPass').textContent = summary.pass || 0;
         $('doctorFail').textContent = summary.fail || 0;
         $('doctorPending').textContent = (summary.needRule || 0) + (summary.needData || 0);
-        $('doctorResultCount').textContent = job ? (summary.total || 0) + ' 项' : '未选择任务';
+        var filter = $('doctorResultFilter');
+        filter.disabled = !job;
         $('doctorReport').disabled = !job || !job.id;
         if (!job) { $('doctorResultList').innerHTML = '<p class="doctor-empty">选择一项检查任务查看构件结论和规范依据。</p>'; return; }
-        var results = job.results || [];
+        var query = filter.value.trim().toLowerCase();
+        var allResults = job.results || [];
+        var results = query ? allResults.filter(function (result) { return String(result.entityId || '').toLowerCase().includes(query); }) : allResults;
+        var visibleResults = results.slice(0, 200);
+        $('doctorResultCount').textContent = query ? results.length + ' / ' + (summary.total || 0) + ' 项' : (summary.total || 0) + ' 项';
         var components = new Map((job.components || []).map(function (component) { return [String(component.entityId), component]; }));
-        $('doctorResultList').innerHTML = results.length ? results.map(function (result) {
+        $('doctorResultList').innerHTML = visibleResults.length ? visibleResults.map(function (result) {
           var component = components.get(String(result.entityId)) || {};
           var details = [component.systemType, component.assemblyType, component.semanticType, component.role, component.material].filter(Boolean).join(' · ');
           var technical = [component.levelName, component.schemaName, component.componentTypeRaw].filter(Boolean).join(' · ');
           var issues = (result.issues || []).map(function (issue) { return '<div class="doctor-issue">' + esc(issue.title || issue.ruleId) + '：实际 ' + esc(issue.actual == null ? '缺失' : issue.actual) + '，预期 ' + esc(issue.expected || '') + '</div>'; }).join('');
-          var sources = (result.sources || []).map(function (source) { return '<small>依据：' + esc(source.code || source.title) + ' 第' + esc(source.page) + '页</small>'; }).join('<br>');
+          var sourceLabel = result.status === 'PASS' || result.status === 'FAIL' ? '依据' : '候选规范（未审核）';
+          var sources = (result.sources || []).map(function (source) { return '<small>' + sourceLabel + '：' + esc(source.code || source.title) + ' 第' + esc(source.page) + '页</small>'; }).join('<br>');
           return '<article class="doctor-result" data-status="' + esc(result.status) + '"><b>' + esc(result.entityId) + ' · ' + esc(result.status) + '</b><small>' + esc(details || (technical ? 'SDK 元数据 · ' + technical : '语义、作用或材质待识别')) + '</small><small>' + esc(result.summary || '') + '</small>' + issues + (sources ? '<div class="doctor-issue">' + sources + '</div>' : '') + '</article>';
-        }).join('') : '<p class="doctor-empty">该任务暂无结果。</p>';
+        }).join('') + (results.length > visibleResults.length ? '<p class="doctor-empty">仅显示前 200 项，请按构件 ID 筛选。</p>' : '') : '<p class="doctor-empty">没有匹配的构件。</p>';
       }
-      function selectJob(id) { selectedId = id; renderJobs(); api('/api/bim-doctor/jobs/' + encodeURIComponent(id) + '/results').then(function (job) { renderResults(job); }).catch(function (error) { setService('结果读取失败：' + error.message, 'error'); }); }
+      function selectJob(id) { if (selectedId !== id) $('doctorResultFilter').value = ''; selectedId = id; renderJobs(); api('/api/bim-doctor/jobs/' + encodeURIComponent(id) + '/results').then(function (job) { renderResults(job); }).catch(function (error) { setService('结果读取失败：' + error.message, 'error'); }); }
       function exportReport() { if (!selectedId) return; var link = document.createElement('a'); link.href = apiRoot + '/api/bim-doctor/jobs/' + encodeURIComponent(selectedId) + '/report'; link.download = ''; document.body.appendChild(link); link.click(); link.remove(); }
       function refresh() { setService('正在读取构件医生任务…', ''); return Promise.all([api('/api/bim-doctor/status'), api('/api/bim-doctor/jobs?limit=20'), api('/api/bim-doctor/profile')]).then(function (values) { var status = values[0]; var bridge = status.bridge || {}; var bridgeText = bridge.online ? '实时桥接在线' : '实时桥接未启动'; setService((status.knowledgeReady ? '知识库已连接' : '知识库索引未就绪') + ' · ' + bridgeText + ' · 已审核规则 ' + status.ruleCount + ' 条', status.knowledgeReady ? 'ready' : ''); jobs = values[1].jobs || []; renderProjectProfile(values[2].profile); selectedId = selectedId && jobs.some(function (job) { return job.id === selectedId; }) ? selectedId : (jobs[0] && jobs[0].id); renderJobs(); return selectedId ? selectJob(selectedId) : renderResults(null); }).catch(function (error) { setService('桥接服务未连接：' + error.message, 'error'); jobs = []; renderProjectProfile(null); renderJobs(); renderResults(null); }); }
       function setRulesMessage(text, error) { $('doctorRulesMessage').textContent = text; $('doctorRulesMessage').style.color = error ? '#b91c1c' : ''; }
@@ -1090,9 +1099,9 @@
       function saveRules() { var rules; try { rules = JSON.parse($('doctorRulesJson').value || '[]'); } catch (error) { setRulesMessage('JSON 格式错误', true); return; } $('doctorRulesSave').disabled = true; setRulesMessage('正在保存…'); fetch(apiRoot + '/api/bim-doctor/rules', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-BIM-Bridge-Token': '' }, body: JSON.stringify({ rules: rules, meta: { actor: 'web-review', reason: '规则审核页面保存' } }) }).then(function (response) { if (!response.ok) return response.json().then(function (body) { throw new Error(body.error || '保存失败'); }); return response.json(); }).then(function (payload) { var ruleSet = payload.ruleSet || {}; $('doctorRulesMeta').textContent = '版本 ' + (ruleSet.revision || 0) + ' · 已审核 ' + (ruleSet.ruleCount || 0) + ' · 草稿 ' + (ruleSet.draftCount || 0); setRulesMessage('保存成功'); loadRules(); }).catch(function (error) { setRulesMessage(error.message, true); }).finally(function () { $('doctorRulesSave').disabled = false; }); }
       function rollbackRules() { var revision = $('doctorRuleRevision').value; if (!revision) { setRulesMessage('请先选择历史版本', true); return; } if (!window.confirm('确认回滚到规则版本 ' + revision + '？')) return; fetch(apiRoot + '/api/bim-doctor/rules/rollback', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BIM-Bridge-Token': '' }, body: JSON.stringify({ revision: Number(revision), meta: { actor: 'web-review' } }) }).then(function (response) { if (!response.ok) return response.json().then(function (body) { throw new Error(body.error || '回滚失败'); }); return response.json(); }).then(function () { loadRules(); }).catch(function (error) { setRulesMessage(error.message, true); }); }
       function saveContext() { var mappings; try { mappings = JSON.parse($('doctorContextJson').value || '[]'); } catch (_) { $('doctorContextMessage').textContent = 'JSON 格式错误'; return; } fetch(apiRoot + '/api/bim-doctor/context', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-BIM-Bridge-Token': '' }, body: JSON.stringify({ mappings: mappings, meta: { actor: 'web-review', reason: '工程分类映射保存' } }) }).then(function (response) { if (!response.ok) return response.json().then(function (body) { throw new Error(body.error || '保存失败'); }); return response.json(); }).then(function (payload) { $('doctorContextMessage').textContent = '已保存版本 ' + payload.revision; }).catch(function (error) { $('doctorContextMessage').textContent = error.message; }); }
-      function open() { panel.classList.add('open'); panel.removeAttribute('inert'); panel.setAttribute('aria-hidden', 'false'); $('openBimDoctor').setAttribute('aria-expanded', 'true'); refresh(); }
+      function open() { var sidebar = $('sidebar'); if (sidebar) sidebar.classList.remove('open'); var menuButton = $('menuButton'); if (menuButton) menuButton.setAttribute('aria-expanded', 'false'); panel.classList.add('open'); panel.removeAttribute('inert'); panel.setAttribute('aria-hidden', 'false'); $('openBimDoctor').setAttribute('aria-expanded', 'true'); refresh(); }
       function close() { panel.classList.remove('open'); panel.setAttribute('inert', ''); panel.setAttribute('aria-hidden', 'true'); $('openBimDoctor').setAttribute('aria-expanded', 'false'); }
-      $('openBimDoctor').addEventListener('click', open); $('doctorClose').addEventListener('click', close); $('doctorRefresh').addEventListener('click', refresh); $('doctorReport').addEventListener('click', exportReport); $('doctorRulesToggle').addEventListener('click', function () { var rulesPanel = $('doctorRulesPanel'); rulesPanel.hidden = !rulesPanel.hidden; if (!rulesPanel.hidden) loadRules(); }); $('doctorRuleLoad').addEventListener('click', loadRules); $('doctorRulesSave').addEventListener('click', saveRules); $('doctorRuleRollback').addEventListener('click', rollbackRules); $('doctorContextSave').addEventListener('click', saveContext); refresh(); window.setInterval(function () { if (panel.classList.contains('open')) refresh(); }, 4000);
+      $('openBimDoctor').addEventListener('click', open); $('doctorClose').addEventListener('click', close); $('doctorRefresh').addEventListener('click', refresh); $('doctorResultFilter').addEventListener('input', function () { if (selectedJob) renderResults(selectedJob); }); $('doctorReport').addEventListener('click', exportReport); $('doctorRulesToggle').addEventListener('click', function () { var rulesPanel = $('doctorRulesPanel'); rulesPanel.hidden = !rulesPanel.hidden; if (!rulesPanel.hidden) loadRules(); }); $('doctorRuleLoad').addEventListener('click', loadRules); $('doctorRulesSave').addEventListener('click', saveRules); $('doctorRuleRollback').addEventListener('click', rollbackRules); $('doctorContextSave').addEventListener('click', saveContext); refresh(); window.setInterval(function () { if (panel.classList.contains('open')) refresh(); }, 4000);
     })();
   </script>
   <script src="ios-workbench.js"></script>

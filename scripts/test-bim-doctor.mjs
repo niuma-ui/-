@@ -66,12 +66,14 @@ assert.deepEqual(result.summary, { total: 3, pass: 1, fail: 1, warning: 0, needR
 assert.equal(result.results[1].issues[0].actual, 180);
 assert.equal(result.results[2].status, 'NEED_DATA');
 
-const shapeOnlyJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
+const shapeOnlyJob = await doctor.createJob({ project: { name: '变电设备' } });
 await doctor.addComponents(shapeOnlyJob.id, [
   { entityId: '2:1', name: '长方体', shapeName: '长方体', componentType: null, parameters: { width: 240 } }
 ]);
 const shapeOnlyResult = await doctor.runJob(shapeOnlyJob.id);
 assert.equal(shapeOnlyResult.results[0].status, 'NEED_RULE');
+assert.equal(shapeOnlyResult.results[0].sources.length, 0);
+assert.match(shapeOnlyResult.results[0].summary, /无法可靠检索/);
 const duplicateProjectJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
 const dedupedJobs = await doctor.listJobs();
 assert.equal(dedupedJobs.length, 4);
