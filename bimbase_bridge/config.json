@@ -2,6 +2,10 @@
   "serverUrl": "http://127.0.0.1:4174",
   "token": "",
   "projectName": "BIMBase 当前工程",
+  "projectType": "",
+  "discipline": "",
+  "stage": "",
+  "dedupeChecks": true,
   "batchSize": 200,
   "timeout": 120
 }

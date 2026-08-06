@@ -3,6 +3,7 @@
     {
       "id": "REPLACE-WITH-REVIEWED-RULE-001",
       "enabled": false,
+      "status": "draft",
       "title": "示例：构件尺寸下限",
       "projectTypes": ["请填写工程类型"],
       "disciplines": ["请填写专业"],
@@ -13,7 +14,10 @@
       "operator": ">=",
       "value": 0,
       "unit": "mm",
+      "tolerance": 0,
       "severity": "major",
+      "reviewedBy": "请填写审核人",
+      "version": "请填写规则版本",
       "standardCode": "请填写规范编号",
       "clause": "请填写条文号",
       "query": "请填写用于规范库检索的完整问题",

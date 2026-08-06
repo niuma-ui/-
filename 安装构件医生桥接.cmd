@@ -7,6 +7,7 @@ set "PLUGIN_SOURCE=%~dp0bimbase_plugin\90构件医生"
 set "PLUGIN_TARGET=D:\BIMBase建模软件 2025\App\90构件医生"
 if not exist "%TARGET%" mkdir "%TARGET%"
 copy /Y "%SOURCE%\bridge.py" "%TARGET%\bridge.py" >nul
+copy /Y "%SOURCE%\realtime_bridge.py" "%TARGET%\realtime_bridge.py" >nul
 copy /Y "%SOURCE%\README.md" "%TARGET%\README.md" >nul
 if not exist "%TARGET%\config.json" copy /Y "%SOURCE%\config.json" "%TARGET%\config.json" >nul
 if not exist "%PLUGIN_TARGET%" mkdir "%PLUGIN_TARGET%"

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "revision": 0,
+  "mappings": [
+    {
+      "id": "PROJECT-001",
+      "enabled": true,
+      "match": "请填写工程文件名或路径关键词",
+      "projectType": "请填写工程类型",
+      "discipline": "请填写专业",
+      "stage": "请填写设计阶段"
+    }
+  ]
+}

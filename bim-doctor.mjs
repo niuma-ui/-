@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const allowedOperators = new Set(['exists', '==', '!=', '>', '>=', '<', '<=', 'between', 'contains']);
+const ruleStatuses = new Set(['draft', 'reviewed', 'retired']);
 
 function httpError(message, statusCode = 400) {
   const error = new Error(message);
@@ -18,24 +19,49 @@ function getField(object, field) {
   return text(field).split('.').filter(Boolean).reduce((value, key) => value?.[key], object);
 }
 
-function compare(actual, operator, expected) {
+const unitFactors = new Map([
+  ['mm', 1], ['毫米', 1], ['cm', 10], ['厘米', 10], ['m', 1000], ['米', 1000],
+  ['mm2', 1], ['mm²', 1], ['cm2', 100], ['cm²', 100], ['m2', 1000000], ['m²', 1000000],
+  ['mm3', 1], ['mm³', 1], ['cm3', 1000], ['cm³', 1000], ['m3', 1000000000], ['m³', 1000000000],
+  ['kpa', 1], ['mpa', 1000], ['pa', 0.001]
+]);
+
+function numericValue(value, targetUnit = '') {
+  const match = String(value ?? '').trim().match(/^([-+]?\d+(?:\.\d+)?)\s*([a-zA-Z²³%\u4e00-\u9fff]*)/);
+  if (!match) return Number.NaN;
+  const number = Number(match[1]);
+  const actualUnit = match[2].toLowerCase();
+  const target = String(targetUnit || '').toLowerCase();
+  if (!actualUnit || !target || actualUnit === target || actualUnit === '%') return number;
+  const from = unitFactors.get(actualUnit);
+  const to = unitFactors.get(target);
+  return from && to ? number * from / to : number;
+}
+
+function compare(actual, operator, expected, options = {}) {
+  const tolerance = Number(options.tolerance);
+  const epsilon = Number.isFinite(tolerance) ? Math.abs(tolerance) : 0;
   if (operator === 'exists') return actual !== undefined && actual !== null && actual !== '';
   if (operator === 'contains') return String(actual ?? '').includes(String(expected ?? ''));
   if (operator === 'between') {
-    const number = Number(actual);
-    return Number.isFinite(number) && Array.isArray(expected) && number >= Number(expected[0]) && number <= Number(expected[1]);
+    const number = numericValue(actual, options.unit);
+    return Number.isFinite(number) && Array.isArray(expected) && number >= Number(expected[0]) - epsilon && number <= Number(expected[1]) + epsilon;
   }
   if (operator === '==' || operator === '!=') {
-    const equal = String(actual ?? '') === String(expected ?? '');
+    const left = numericValue(actual, options.unit);
+    const right = numericValue(expected, options.unit);
+    const equal = Number.isFinite(left) && Number.isFinite(right)
+      ? Math.abs(left - right) <= epsilon
+      : String(actual ?? '') === String(expected ?? '');
     return operator === '==' ? equal : !equal;
   }
-  const left = Number(actual);
-  const right = Number(expected);
+  const left = numericValue(actual, options.unit);
+  const right = numericValue(expected, options.unit);
   if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
-  if (operator === '>') return left > right;
-  if (operator === '>=') return left >= right;
-  if (operator === '<') return left < right;
-  return left <= right;
+  if (operator === '>') return left > right - epsilon;
+  if (operator === '>=') return left >= right - epsilon;
+  if (operator === '<') return left < right + epsilon;
+  return left <= right + epsilon;
 }
 
 function matchesValues(expected = ['*'], actual = []) {
@@ -74,8 +100,11 @@ function complianceContext(project, component) {
 
 function formatExpected(rule) {
   if (rule.operator === 'exists') return '必须提供';
-  if (rule.operator === 'between') return `${rule.value?.[0]}～${rule.value?.[1]}${rule.unit || ''}`;
-  return `${rule.operator} ${rule.value}${rule.unit || ''}`;
+  const suffix = rule.unit || '';
+  const tolerance = Number(rule.tolerance);
+  const toleranceText = Number.isFinite(tolerance) && tolerance > 0 ? `（容差 ±${tolerance}${suffix}）` : '';
+  if (rule.operator === 'between') return `${rule.value?.[0]}～${rule.value?.[1]}${suffix}${toleranceText}`;
+  return `${rule.operator} ${rule.value}${suffix}${toleranceText}`;
 }
 
 function sourceView(result) {
@@ -89,9 +118,10 @@ function sourceView(result) {
 }
 
 export class BimDoctor {
-  constructor({ dataDir, rulesFile, knowledge }) {
+  constructor({ dataDir, rulesFile, contextFile, knowledge }) {
     this.dataDir = dataDir;
     this.rulesFile = rulesFile;
+    this.contextFile = contextFile || path.join(dataDir, 'context.json');
     this.knowledge = knowledge;
   }
 
@@ -101,6 +131,11 @@ export class BimDoctor {
       await fs.access(this.rulesFile);
     } catch {
       await this.setRules([]);
+    }
+    try {
+      await fs.access(this.contextFile);
+    } catch {
+      await fs.writeFile(this.contextFile, JSON.stringify({ schemaVersion: 1, revision: 0, mappings: [] }, null, 2));
     }
   }
 
@@ -136,6 +171,16 @@ export class BimDoctor {
     };
   }
 
+  async nextSnapshotVersion(project) {
+    const identity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || ''}`);
+    const jobs = await this.listJobs(100);
+    const versions = jobs.filter((job) => {
+      const current = job.project || {};
+      return text(current.path || current.fileName || `${current.source || 'BIMBase'}:${current.name || ''}`) === identity;
+    }).map((job) => Number(job.project?.snapshotVersion) || 0);
+    return (versions.length ? Math.max(...versions) : 0) + 1;
+  }
+
   jobPath(id) {
     if (!/^[a-f0-9-]{36}$/.test(id)) throw httpError('任务 ID 无效');
     return path.join(this.dataDir, `${id}.json`);
@@ -157,11 +202,63 @@ export class BimDoctor {
   }
 
   async getRules() {
-    const payload = JSON.parse(await fs.readFile(this.rulesFile, 'utf8'));
-    return Array.isArray(payload) ? payload : payload.rules || [];
+    return (await this.readRulesDocument()).rules;
   }
 
-  async setRules(rules) {
+  async readRulesDocument() {
+    const payload = JSON.parse(await fs.readFile(this.rulesFile, 'utf8'));
+    return {
+      schemaVersion: Number(payload.schemaVersion) || 1,
+      revision: Number(payload.revision) || 0,
+      updatedAt: payload.updatedAt || null,
+      rules: Array.isArray(payload) ? payload : (payload.rules || [])
+    };
+  }
+
+  async getRuleSetInfo() {
+    const document = await this.readRulesDocument();
+    return {
+      schemaVersion: document.schemaVersion,
+      revision: document.revision,
+      updatedAt: document.updatedAt,
+      ruleCount: document.rules.filter((rule) => rule.enabled !== false && rule.status === 'reviewed').length,
+      draftCount: document.rules.filter((rule) => rule.status === 'draft').length
+    };
+  }
+
+  async getContextMappings() {
+    try {
+      const payload = JSON.parse(await fs.readFile(this.contextFile, 'utf8'));
+      return { schemaVersion: Number(payload.schemaVersion) || 1, revision: Number(payload.revision) || 0, updatedAt: payload.updatedAt || null, mappings: payload.mappings || [] };
+    } catch { return { schemaVersion: 1, revision: 0, updatedAt: null, mappings: [] }; }
+  }
+
+  async setContextMappings(mappings, meta = {}) {
+    if (!Array.isArray(mappings)) throw httpError('mappings 必须是数组');
+    const current = await this.getContextMappings();
+    const normalized = mappings.map((mapping, index) => {
+      if (!text(mapping.match)) throw httpError(`第 ${index + 1} 条工程映射缺少 match`);
+      return { enabled: mapping.enabled !== false, id: text(mapping.id) || `context-${index + 1}`, ...mapping, match: text(mapping.match) };
+    });
+    const document = { schemaVersion: 1, revision: current.revision + 1, updatedAt: new Date().toISOString(), mappings: normalized };
+    await fs.writeFile(`${this.contextFile}.tmp`, JSON.stringify(document, null, 2));
+    await fs.rename(`${this.contextFile}.tmp`, this.contextFile);
+    await fs.appendFile(path.join(this.dataDir, 'rule-audit.jsonl'), `${JSON.stringify({ action: 'context-mapping', revision: document.revision, updatedAt: document.updatedAt, actor: text(meta.actor) || 'system', reason: text(meta.reason), mappingCount: normalized.length })}\n`);
+    return document;
+  }
+
+  async resolveProjectContext(project) {
+    const current = await this.getContextMappings();
+    const identity = text(project.path || project.fileName || project.name).toLowerCase();
+    const matches = current.mappings.filter((mapping) => mapping.enabled !== false && identity.includes(text(mapping.match).toLowerCase()));
+    return matches.reduce((resolved, mapping) => {
+      const patch = Object.fromEntries(Object.entries(mapping).filter(([key]) => !['id', 'match', 'enabled'].includes(key)));
+      if (patch.projectType && !patch.type) patch.type = patch.projectType;
+      return { ...resolved, ...patch };
+    }, { ...project });
+  }
+
+  async setRules(rules, meta = {}) {
     if (!Array.isArray(rules)) throw httpError('rules 必须是数组');
     const normalized = rules.map((rule, index) => {
       const operator = text(rule.operator);
@@ -174,24 +271,75 @@ export class BimDoctor {
       if (operator === 'between' && (!Array.isArray(rule.value) || rule.value.length !== 2)) {
         throw httpError(`第 ${index + 1} 条 between 规则必须提供两个边界值`);
       }
+      const status = text(rule.status || (rule.enabled === false ? 'draft' : ''));
+      if (!ruleStatuses.has(status)) throw httpError(`第 ${index + 1} 条规则的 status 必须是 draft/reviewed/retired`);
+      if (rule.enabled !== false && status !== 'reviewed') throw httpError(`第 ${index + 1} 条启用规则必须先标记为 reviewed`);
+      if (rule.enabled !== false && (!text(rule.standardCode) || !text(rule.clause))) {
+        throw httpError(`第 ${index + 1} 条启用规则必须填写 standardCode 和 clause`);
+      }
+      if (rule.enabled !== false && (!text(rule.unit) || !text(rule.reviewedBy) || !text(rule.version))) {
+        throw httpError(`第 ${index + 1} 条启用规则必须填写 unit、reviewedBy 和 version`);
+      }
+      if (rule.enabled !== false && operator !== 'exists' && (rule.value === undefined || rule.value === null || rule.value === '')) {
+        throw httpError(`第 ${index + 1} 条启用规则必须填写 value`);
+      }
+      const scopeFields = ['projectTypes', 'disciplines', 'systemTypes', 'assemblyTypes', 'componentTypes'];
+      if (rule.enabled !== false && !scopeFields.some((field) => Array.isArray(rule[field]) && rule[field].some((value) => text(value)))) {
+        throw httpError(`第 ${index + 1} 条启用规则必须至少指定一个工程/系统/组件语义范围`);
+      }
       return {
         enabled: rule.enabled !== false,
         severity: rule.severity || 'major',
-        componentTypes: rule.componentTypes || ['*'],
+        status,
+        componentTypes: rule.componentTypes || [],
         ...rule,
         id: text(rule.id),
         field: text(rule.field),
-        operator
+        operator,
+        status
       };
     });
-    await fs.writeFile(`${this.rulesFile}.tmp`, JSON.stringify({ rules: normalized }, null, 2));
+    let previous;
+    try { previous = await this.readRulesDocument(); } catch { previous = { revision: 0 }; }
+    const updatedAt = new Date().toISOString();
+    const document = { schemaVersion: 2, revision: previous.revision + 1, updatedAt, rules: normalized };
+    const revisionsDir = path.join(this.dataDir, 'rule-revisions');
+    await fs.mkdir(revisionsDir, { recursive: true });
+    if (previous.revision > 0) await fs.writeFile(path.join(revisionsDir, `${previous.revision}.json`), JSON.stringify(previous, null, 2));
+    await fs.writeFile(`${this.rulesFile}.tmp`, JSON.stringify(document, null, 2));
     await fs.rename(`${this.rulesFile}.tmp`, this.rulesFile);
+    await fs.appendFile(path.join(this.dataDir, 'rule-audit.jsonl'), `${JSON.stringify({
+      action: 'replace', revision: document.revision, updatedAt,
+      actor: text(meta.actor) || 'system', reason: text(meta.reason), ruleCount: normalized.length
+    })}\n`);
     return normalized;
   }
 
+  async listRuleRevisions() {
+    const revisionsDir = path.join(this.dataDir, 'rule-revisions');
+    let names = [];
+    try { names = await fs.readdir(revisionsDir); } catch { return []; }
+    return (await Promise.all(names.filter((name) => /^\d+\.json$/.test(name)).map(async (name) => {
+      try {
+        const document = JSON.parse(await fs.readFile(path.join(revisionsDir, name), 'utf8'));
+        return { revision: document.revision, updatedAt: document.updatedAt, ruleCount: document.rules?.length || 0 };
+      } catch { return null; }
+    }))).filter(Boolean).sort((left, right) => right.revision - left.revision);
+  }
+
+  async rollbackRules(revision, meta = {}) {
+    const value = Number(revision);
+    if (!Number.isInteger(value) || value < 1) throw httpError('revision 无效');
+    const file = path.join(this.dataDir, 'rule-revisions', `${value}.json`);
+    let document;
+    try { document = JSON.parse(await fs.readFile(file, 'utf8')); } catch { throw httpError('规则版本不存在', 404); }
+    return this.setRules(document.rules || [], { ...meta, reason: meta.reason || `rollback to revision ${value}` });
+  }
+
   async createJob(body = {}) {
-    const project = body.project || {};
+    const project = await this.resolveProjectContext(body.project || {});
     if (!text(project.name)) throw httpError('project.name 不能为空');
+    project.snapshotVersion = await this.nextSnapshotVersion(project);
     const components = Array.isArray(body.components) ? body.components : [];
     const now = new Date().toISOString();
     const job = {
@@ -252,7 +400,7 @@ export class BimDoctor {
     const issues = applicable.map((rule) => {
       const actual = getField(component, rule.field);
       const missing = actual === undefined || actual === null || actual === '';
-      const passed = !missing && compare(actual, rule.operator, rule.value);
+      const passed = !missing && compare(actual, rule.operator, rule.value, { unit: rule.unit, tolerance: rule.tolerance });
       const query = rule.query || `${rule.standardCode || ''} ${rule.clause || ''} ${rule.title || complianceContext(project, component)}`;
       return {
         ruleId: rule.id,
@@ -310,6 +458,21 @@ export class BimDoctor {
     job.updatedAt = new Date().toISOString();
     await this.writeJob(job);
     return job;
+  }
+
+  async reportCsv(id) {
+    const job = await this.readJob(id);
+    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = [['项目', '快照版本', '构件ID', '结论', '规则ID', '检查项', '字段', '实际值', '期望值', '规范编号', '条文号']];
+    for (const result of job.results || []) {
+      const issues = result.issues?.length ? result.issues : [{}];
+      for (const issue of issues) rows.push([
+        job.project?.name, job.project?.snapshotVersion, result.entityId, result.status,
+        issue.ruleId, issue.title, issue.field, issue.actual, issue.expected,
+        issue.standardCode, issue.clause
+      ]);
+    }
+    return `\uFEFF${rows.map((row) => row.map(escape).join(',')).join('\r\n')}\r\n`;
   }
 
   async listJobs(limit = 20) {

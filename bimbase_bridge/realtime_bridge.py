@@ -37,6 +37,51 @@ def panel_component(raw):
     return component
 
 
+def log(base, message):
+    try:
+        with open(os.path.join(base, "realtime-bridge.log"), "a", encoding="utf-8") as stream:
+            stream.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%S"), message))
+    except Exception:
+        pass
+
+
+def read_queue(path):
+    try:
+        with open(path, "r", encoding="utf-8") as stream:
+            value = json.load(stream)
+        return value if isinstance(value, list) else []
+    except Exception:
+        return []
+
+
+def write_queue(path, queue):
+    with open(path, "w", encoding="utf-8") as stream:
+        json.dump(queue[-50:], stream, ensure_ascii=False, indent=2)
+
+
+def queue_snapshot(path, project, component, fingerprint):
+    queue = read_queue(path)
+    item = {"project": project, "component": component, "fingerprint": fingerprint, "queuedAt": time.time()}
+    queue = [old for old in queue if old.get("fingerprint") != fingerprint]
+    queue.append(item)
+    write_queue(path, queue)
+
+
+def flush_queue(path, config, base):
+    queue = read_queue(path)
+    while queue:
+        item = queue[0]
+        try:
+            bridge.send_job(config, [item["component"]], item.get("project") or {})
+        except Exception as error:
+            log(base, "queue flush failed: %s" % error)
+            break
+        queue.pop(0)
+        write_queue(path, queue)
+        log(base, "queued snapshot uploaded: %s" % item.get("fingerprint", ""))
+    return queue
+
+
 def main():
     base = os.path.dirname(os.path.abspath(__file__))
     parser = argparse.ArgumentParser()
@@ -46,11 +91,14 @@ def main():
     args = parser.parse_args()
     config = bridge.load_config(args.config)
     pid_path = os.path.join(base, "realtime-bridge.pid")
+    queue_path = os.path.join(base, "realtime-bridge-queue.json")
     with open(pid_path, "w") as stream:
         stream.write(str(os.getpid()))
     last_fingerprint = None
+    log(base, "started pid=%s" % os.getpid())
     try:
         while True:
+            flush_queue(queue_path, config, base)
             project = bridge.detect_project_context(config)
             try:
                 raw = bridge.read_property_panel(args.panel_script)
@@ -66,16 +114,18 @@ def main():
             }
             try:
                 bridge.send_heartbeat(config, heartbeat)
-            except Exception:
-                pass
+            except Exception as error:
+                log(base, "heartbeat failed: %s" % error)
             if component and project.get("path"):
                 fingerprint = bridge.check_fingerprint(project, [component], [])
                 if fingerprint != last_fingerprint:
                     try:
-                        bridge.send_job(config, [component])
+                        bridge.send_job(config, [component], project)
                         last_fingerprint = fingerprint
-                    except Exception:
-                        pass
+                        log(base, "snapshot uploaded: %s" % fingerprint)
+                    except Exception as error:
+                        queue_snapshot(queue_path, project, component, fingerprint)
+                        log(base, "snapshot queued: %s (%s)" % (fingerprint, error))
             time.sleep(max(1.0, args.interval))
     finally:
         try:

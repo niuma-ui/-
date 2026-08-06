@@ -13,6 +13,7 @@ const pdfRoot = path.join(projectRoot, '水利水电规范库');
 const cacheDir = path.join(projectRoot, '.knowledge-cache');
 const bimDoctorDir = path.join(cacheDir, 'bim-doctor');
 const bimDoctorRulesFile = path.join(projectRoot, 'bim-doctor-rules.json');
+const bimDoctorContextFile = path.join(projectRoot, 'bim-doctor-context.json');
 const host = process.env.HOST || '0.0.0.0';
 const port = Number(process.env.PORT || 4173);
 const queryWindowMs = 10 * 60 * 1000;
@@ -58,7 +59,7 @@ const knowledge = new KnowledgeBase({ root: pdfRoot, cacheDir });
 knowledge.initialize().catch((error) => {
   console.error('知识库索引初始化失败：', error);
 });
-const bimDoctor = new BimDoctor({ dataDir: bimDoctorDir, rulesFile: bimDoctorRulesFile, knowledge });
+const bimDoctor = new BimDoctor({ dataDir: bimDoctorDir, rulesFile: bimDoctorRulesFile, contextFile: bimDoctorContextFile, knowledge });
 bimDoctor.initialize().catch((error) => {
   console.error('构件医生初始化失败：', error);
 });
@@ -410,8 +411,8 @@ const server = http.createServer(async (request, response) => {
     if (pathname.startsWith('/api/bim-doctor/')) {
       if (!requireBridgeAuth(request, response)) return;
       if (request.method === 'GET' && pathname === '/api/bim-doctor/status') {
-        const rules = await bimDoctor.getRules();
-        json(response, 200, { ready: true, knowledgeReady: knowledge.ready, ruleCount: rules.filter((rule) => rule.enabled !== false).length, bridge: await bimDoctor.getBridgeState() });
+        const ruleSet = await bimDoctor.getRuleSetInfo();
+        json(response, 200, { ready: true, knowledgeReady: knowledge.ready, ruleCount: ruleSet.ruleCount, ruleSet, context: await bimDoctor.getContextMappings(), bridge: await bimDoctor.getBridgeState() });
         return;
       }
       if (request.method === 'POST' && pathname === '/api/bim-doctor/heartbeat') {
@@ -420,6 +421,15 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === 'GET' && pathname === '/api/bim-doctor/snapshot') {
         json(response, 200, await bimDoctor.latestSnapshot(url.searchParams.get('entityId') || ''));
+        return;
+      }
+      if (request.method === 'GET' && pathname === '/api/bim-doctor/context') {
+        json(response, 200, await bimDoctor.getContextMappings());
+        return;
+      }
+      if (request.method === 'PUT' && pathname === '/api/bim-doctor/context') {
+        const body = await readJson(request, 512 * 1024);
+        json(response, 200, await bimDoctor.setContextMappings(body.mappings, body.meta || {}));
         return;
       }
       if (request.method === 'POST' && pathname === '/api/bim-doctor/ask') {
@@ -452,12 +462,21 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (pathname === '/api/bim-doctor/rules' && request.method === 'GET') {
-        json(response, 200, { rules: await bimDoctor.getRules() });
+        json(response, 200, { rules: await bimDoctor.getRules(), ruleSet: await bimDoctor.getRuleSetInfo() });
+        return;
+      }
+      if (pathname === '/api/bim-doctor/rules/revisions' && request.method === 'GET') {
+        json(response, 200, { revisions: await bimDoctor.listRuleRevisions() });
         return;
       }
       if (pathname === '/api/bim-doctor/rules' && request.method === 'PUT') {
         const body = await readJson(request, 5 * 1024 * 1024);
-        json(response, 200, { rules: await bimDoctor.setRules(body.rules) });
+        json(response, 200, { rules: await bimDoctor.setRules(body.rules, body.meta || {}), ruleSet: await bimDoctor.getRuleSetInfo() });
+        return;
+      }
+      if (pathname === '/api/bim-doctor/rules/rollback' && request.method === 'POST') {
+        const body = await readJson(request, 64 * 1024);
+        json(response, 200, { rules: await bimDoctor.rollbackRules(body.revision, body.meta || {}), ruleSet: await bimDoctor.getRuleSetInfo() });
         return;
       }
       if (pathname === '/api/bim-doctor/jobs' && request.method === 'POST') {
@@ -467,6 +486,21 @@ const server = http.createServer(async (request, response) => {
       }
       if (pathname === '/api/bim-doctor/jobs' && request.method === 'GET') {
         json(response, 200, { jobs: await bimDoctor.listJobs(url.searchParams.get('limit')) });
+        return;
+      }
+      const reportMatch = pathname.match(/^\/api\/bim-doctor\/jobs\/([a-f0-9-]{36})\/report$/);
+      if (reportMatch && request.method === 'GET') {
+        const job = await bimDoctor.readJob(reportMatch[1]);
+        const report = await bimDoctor.reportCsv(reportMatch[1]);
+        const projectName = String(job.project?.name || 'project')
+          .replace(/[^\w\u4e00-\u9fff.-]+/g, '_')
+          .slice(0, 60) || 'project';
+        const filename = `bim-doctor-${projectName}-${job.project?.snapshotVersion || 1}.csv`;
+        response.writeHead(200, responseHeaders({
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
+        }));
+        response.end(report);
         return;
       }
       const jobMatch = pathname.match(/^\/api\/bim-doctor\/jobs\/([a-f0-9-]{36})(?:\/(components|run|results))?$/);

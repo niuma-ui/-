@@ -426,9 +426,9 @@ class ApiClient(object):
             raise RuntimeError("无法连接知识库服务 %s：%s" % (self.base, error))
 
 
-def send_job(config, components):
+def send_job(config, components, project_override=None):
     client = ApiClient(config["serverUrl"], config.get("token", ""), config.get("timeout", 120))
-    project = dict(detect_project_context(config), source="BIMBase", sourceVersion="2025")
+    project = dict(project_override or detect_project_context(config), source="BIMBase", sourceVersion="2025")
     try:
         rules = client.request("GET", "/api/bim-doctor/rules").get("rules", [])
     except Exception:

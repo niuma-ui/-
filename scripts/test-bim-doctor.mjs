@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { BimDoctor } from '../bim-doctor.mjs';
+import { BimDoctor, compare } from '../bim-doctor.mjs';
+
+assert.equal(compare('100cm', '>=', 1000, { unit: 'mm' }), true);
+assert.equal(compare(99.5, '>=', 100, { tolerance: 0.5 }), true);
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'bim-doctor-'));
 const doctor = new BimDoctor({
@@ -15,8 +18,18 @@ const doctor = new BimDoctor({
 });
 
 await doctor.initialize();
+await doctor.setContextMappings([{ id: 'MAP-1', match: 'mapped-project', projectType: '水工建筑', discipline: '结构' }]);
+const mappedJob = await doctor.createJob({ project: { name: 'mapped-project', path: 'D:/mapped-project.p3d' } });
+assert.equal(mappedJob.project.type, '水工建筑');
+assert.equal(mappedJob.project.discipline, '结构');
+assert.equal(mappedJob.project.snapshotVersion, 1);
+await assert.rejects(() => doctor.setRules([{
+  id: 'UNREVIEWED', componentTypes: ['wall'], field: 'parameters.width', operator: '>=', value: 200,
+  unit: 'mm', standardCode: 'TEST-1', clause: '3.1'
+}]), /reviewed/);
 await doctor.setRules([{
   id: 'WIDTH-001',
+  status: 'reviewed',
   projectTypes: ['水工建筑'],
   componentTypes: ['wall'],
   field: 'parameters.width',
@@ -24,7 +37,10 @@ await doctor.setRules([{
   value: 200,
   unit: 'mm',
   standardCode: 'TEST-1',
-  clause: '3.1'
+  clause: '3.1',
+  reviewedBy: 'test',
+  version: '1.0.0',
+  tolerance: 0
 }]);
 const job = await doctor.createJob({ project: { name: '测试工程', type: '水工建筑' } });
 await doctor.addComponents(job.id, [
@@ -45,11 +61,15 @@ const shapeOnlyResult = await doctor.runJob(shapeOnlyJob.id);
 assert.equal(shapeOnlyResult.results[0].status, 'NEED_RULE');
 const duplicateProjectJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
 const dedupedJobs = await doctor.listJobs();
-assert.equal(dedupedJobs.length, 2);
+assert.equal(dedupedJobs.length, 3);
 assert.equal(dedupedJobs.some((item) => item.id === duplicateProjectJob.id), true);
 assert.equal(dedupedJobs.some((item) => item.id === shapeOnlyJob.id), false);
 const jobs = await doctor.listJobs();
-assert.equal(jobs.length, 2);
+assert.equal(jobs.length, 3);
 assert.ok(jobs.some((item) => item.id === job.id));
 assert.equal(jobs[0].components, undefined);
+const revisions = await doctor.listRuleRevisions();
+assert.ok(revisions.length >= 1);
+await doctor.rollbackRules(revisions[revisions.length - 1].revision, { actor: 'test' });
+assert.equal((await doctor.getRules()).length, 0);
 console.log('bim-doctor self-test passed');
