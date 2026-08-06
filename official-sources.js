@@ -1,0 +1,701 @@
+window.OFFICIAL_SOURCES = {
+  "SL/T191—2025|水工混凝土结构设计规范": {
+    "code": "SL/T191—2025",
+    "name": "水工混凝土结构设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=515EC31589B6586CE06397BE0A0AEAC8",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL/T 191-2025",
+    "officialName": "水工 混凝土结构设计规范",
+    "pid": "515EC31589B6586CE06397BE0A0AEAC8",
+    "type": "BV_HB"
+  },
+  "NB/T 11089—2023|水工挡土墙设计规范": {
+    "code": "NB/T 11089—2023",
+    "name": "水工挡土墙设计规范",
+    "url": "https://hbba.sacinfo.org.cn/stdDetail/d681956501f72c78931dc4167edd51d9eee57a3fa85dda7000b6c90241669cc3",
+    "authority": "全国行业标准信息服务平台 · 国家能源局备案",
+    "label": "查看官方行业标准备案详情",
+    "officialCode": "NB/T 11089-2023",
+    "officialName": "水工挡土墙设计规范",
+    "status": "verified",
+    "type": "official-record"
+  },
+  "NB/T 35023—2025|水闸设计规范": {
+    "code": "NB/T 35023—2025",
+    "name": "水闸设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=473BE91B13C910CDE06397BE0A0A7502",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "NB / T 35023-2025",
+    "officialName": "水闸设计规范",
+    "pid": "473BE91B13C910CDE06397BE0A0A7502",
+    "type": "BV_HB"
+  },
+  "GB 50010-2010|混凝土结构设计规范": {
+    "code": "GB 50010-2010",
+    "name": "混凝土结构设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2024/art_17339_778180.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50010-2010",
+    "officialName": "混凝土结构设计规范",
+    "type": "official-publication"
+  },
+  "GB 50666-2011|混凝土结构工程施工规范": {
+    "code": "GB 50666-2011",
+    "name": "混凝土结构工程施工规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2011/art_17339_206934.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50666-2011",
+    "officialName": "混凝土结构工程施工规范",
+    "type": "official-publication"
+  },
+  "SL 677-2014|水工混凝土施工规范": {
+    "code": "SL 677-2014",
+    "name": "水工混凝土施工规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F24C55BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL 677-2014",
+    "officialName": "水工混凝土施工规范",
+    "pid": "8B1827F24C55BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "SL 386-2007|水利水电工程边坡设计规范": {
+    "code": "SL 386-2007",
+    "name": "水利水电工程边坡设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F1D662BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL 386-2007",
+    "officialName": "水利水电工程边坡设计规范",
+    "pid": "8B1827F1D662BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "GB/T 51015-2014|海堤工程设计规范": {
+    "code": "GB/T 51015-2014",
+    "name": "海堤工程设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224321.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB/T 51015-2014",
+    "officialName": "海堤工程设计规范",
+    "type": "official-publication"
+  },
+  "SL 23-2006|渠系工程抗冻胀设计规范": {
+    "code": "SL 23-2006",
+    "name": "渠系工程抗冻胀设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F1AA1ABB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL 23-2006",
+    "officialName": "渠系工程抗冻胀设计规范",
+    "pid": "8B1827F1AA1ABB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "GB 50330-2013|建筑边坡工程技术规范": {
+    "code": "GB 50330-2013",
+    "name": "建筑边坡工程技术规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224874.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50330-2013",
+    "officialName": "建筑边坡工程技术规范",
+    "type": "official-publication"
+  },
+  "NB/T 11807—2025|水电工程边坡柔性防护网工程技术规范": {
+    "code": "NB/T 11807—2025",
+    "name": "水电工程边坡柔性防护网工程技术规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=3B0C2611425AE22FE06397BE0A0A3D18",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "NB / T 11807-2025",
+    "officialName": "水电工程边坡柔性防护网工程技术规范",
+    "pid": "3B0C2611425AE22FE06397BE0A0A3D18",
+    "type": "BV_HB"
+  },
+  "GB/T 16453.1-2008|水土保持综合治理 技术规范 坡耕地治理技术": {
+    "code": "GB/T 16453.1-2008",
+    "name": "水土保持综合治理 技术规范 坡耕地治理技术",
+    "url": "https://std.samr.gov.cn/gb/search/gbDetailed?id=71F772D7620AD3A7E05397BE0A0AB82A",
+    "authority": "全国标准信息公共服务平台 · 国家标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GB / T 16453.1-2008",
+    "officialName": "水土保持综合治理 技术规范 坡耕地治理技术",
+    "pid": "71F772D7620AD3A7E05397BE0A0AB82A",
+    "type": "BV_GB"
+  },
+  "JTG D30-2015|公路路基设计规范": {
+    "code": "JTG D30-2015",
+    "name": "公路路基设计规范",
+    "url": "https://xxgk.mot.gov.cn/2020/jigou/glj/202006/t20200623_3312251.html",
+    "authority": "中华人民共和国交通运输部",
+    "label": "查看交通运输部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "JTG D30-2015",
+    "officialName": "公路路基设计规范",
+    "type": "official-publication"
+  },
+  "GB 50007-2011|建筑地基基础设计规范": {
+    "code": "GB 50007-2011",
+    "name": "建筑地基基础设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2011/art_17339_206919.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50007-2011",
+    "officialName": "建筑地基基础设计规范",
+    "type": "official-publication"
+  },
+  "GB 50286-2013|堤防工程技术规范": {
+    "code": "GB 50286-2013",
+    "name": "堤防工程技术规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224611.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看主管部门发布文件并核对名称",
+    "status": "code-review",
+    "officialCode": "GB 50286-2013",
+    "officialName": "堤防工程设计规范",
+    "type": "official-publication"
+  },
+  "JGJ 79-2012|建筑地基处理技术规范": {
+    "code": "JGJ 79-2012",
+    "name": "建筑地基处理技术规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2012/art_17339_211727.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "JGJ 79-2012",
+    "officialName": "建筑地基处理技术规范",
+    "type": "official-publication"
+  },
+  "SL/T 260-2025|堤防工程施工规范": {
+    "code": "SL/T 260-2025",
+    "name": "堤防工程施工规范",
+    "url": "https://hbba.sacinfo.org.cn/stdDetail/58735a43b7cefc2e4b10f48b2d0e74d67b92046c648296c5386e54cb425d12ef",
+    "authority": "全国行业标准信息服务平台 · 水利部备案",
+    "label": "查看官方行业标准备案详情",
+    "officialCode": "SL/T 260-2025",
+    "officialName": "堤防工程施工规范",
+    "status": "verified",
+    "type": "official-record"
+  },
+  "GB 50009-2012|建筑结构荷载规范": {
+    "code": "GB 50009-2012",
+    "name": "建筑结构荷载规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2012/art_17339_210754.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50009-2012",
+    "officialName": "建筑结构荷载规范",
+    "type": "official-publication"
+  },
+  "SL/T377—2025|水利水电工程锚喷支护技术规范": {
+    "code": "SL/T377—2025",
+    "name": "水利水电工程锚喷支护技术规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=513692AE0F9ABA74E06397BE0A0AF4F6",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL/T 377-2025",
+    "officialName": "水利水电工程 锚喷支护 技术规范",
+    "pid": "513692AE0F9ABA74E06397BE0A0AF4F6",
+    "type": "BV_HB"
+  },
+  "GB 50013-2018|室外给水设计标准": {
+    "code": "GB 50013-2018",
+    "name": "室外给水设计标准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2024/art_17339_241590.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50013-2018",
+    "officialName": "室外给水设计标准",
+    "type": "official-publication"
+  },
+  "GB 50014-2021|室外排水设计标准": {
+    "code": "GB 50014-2021",
+    "name": "室外排水设计标准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_250183.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50014-2021",
+    "officialName": "室外排水设计标准",
+    "type": "official-publication"
+  },
+  "GB 50202-2018|建筑地基基础工程施工质量验收标 准": {
+    "code": "GB 50202-2018",
+    "name": "建筑地基基础工程施工质量验收标 准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2019/art_17339_239995.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50202-2018",
+    "officialName": "建筑地基基础工程施工质量验收标 准",
+    "type": "official-publication"
+  },
+  "SL 703-2015|灌溉与排水工程施工质量评定规程": {
+    "code": "SL 703-2015",
+    "name": "灌溉与排水工程施工质量评定规程",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F1509EBB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看同名官方标准并核对编号",
+    "status": "code-review",
+    "officialCode": "SL/T 703-2015",
+    "officialName": "灌溉 与 排水工程施工质量 评定规程",
+    "pid": "8B1827F1509EBB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "GB 50268-2008|给水排水管道工程施工及验收规范": {
+    "code": "GB 50268-2008",
+    "name": "给水排水管道工程施工及验收规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2008/art_17339_179023.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50268-2008",
+    "officialName": "给水排水管道工程施工及验收规范",
+    "type": "official-publication"
+  },
+  "JTG D60-2015|公路桥涵设计通用规范": {
+    "code": "JTG D60-2015",
+    "name": "公路桥涵设计通用规范",
+    "url": "https://xxgk.mot.gov.cn/2020/jigou/glj/202204/t20220425_3652828.html",
+    "authority": "中华人民共和国交通运输部",
+    "label": "查看交通运输部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "JTG D60-2015",
+    "officialName": "公路桥涵设计通用规范",
+    "type": "official-publication"
+  },
+  "JTG 3362—2018|公路钢筋混凝土及预应力混凝土桥 涵设计规范": {
+    "code": "JTG 3362—2018",
+    "name": "公路钢筋混凝土及预应力混凝土桥 涵设计规范",
+    "url": "https://jtst.mot.gov.cn/hb/search/stdHBDetailed?id=43905ea5cfb5e748c54f6413238b510e",
+    "authority": "中华人民共和国交通运输部",
+    "label": "查看交通运输部标准详情",
+    "officialCode": "JTG 3362-2018",
+    "officialName": "公路钢筋混凝土及预应力混凝土桥涵设计规范",
+    "status": "verified",
+    "type": "official-record"
+  },
+  "SL 744-2016|水工建筑物荷载设计规范": {
+    "code": "SL 744-2016",
+    "name": "水工建筑物荷载设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F24D71BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看同名官方标准并核对编号",
+    "status": "code-review",
+    "officialCode": "SL/T 744-2016",
+    "officialName": "水工 建筑物 荷载 设计规范",
+    "pid": "8B1827F24D71BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "SL/T105—2025|水工金属结构防腐蚀技术规范": {
+    "code": "SL/T105—2025",
+    "name": "水工金属结构防腐蚀技术规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=513692AE0F99BA74E06397BE0A0AF4F6",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL/T 105-2025",
+    "officialName": "水工 金属结构 防腐蚀 技术规范",
+    "pid": "513692AE0F99BA74E06397BE0A0AF4F6",
+    "type": "BV_HB"
+  },
+  "GB 50096-2011|住宅设计规范": {
+    "code": "GB 50096-2011",
+    "name": "住宅设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2011/art_17339_206878.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50096-2011",
+    "officialName": "住宅设计规范",
+    "type": "official-publication"
+  },
+  "GB 50763-2012|无障碍设计规范": {
+    "code": "GB 50763-2012",
+    "name": "无障碍设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2012/art_17339_209758.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50763-2012",
+    "officialName": "无障碍设计规范",
+    "type": "official-publication"
+  },
+  "GB 51192-2016|公园设计规范": {
+    "code": "GB 51192-2016",
+    "name": "公园设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2017/art_17339_230801.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 51192-2016",
+    "officialName": "公园设计规范",
+    "type": "official-publication"
+  },
+  "GB/T 51439-2021|城市步行和自行车交通系统规划标 准": {
+    "code": "GB/T 51439-2021",
+    "name": "城市步行和自行车交通系统规划标 准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_250179.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB/T 51439-2021",
+    "officialName": "城市步行和自行车交通系统规划标 准",
+    "type": "official-publication"
+  },
+  "GB 50016-2014|建筑设计防火规范": {
+    "code": "GB 50016-2014",
+    "name": "建筑设计防火规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224333.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50016-2014",
+    "officialName": "建筑设计防火规范",
+    "type": "official-publication"
+  },
+  "GB/T 50337-2018|环境卫生设施设置标准": {
+    "code": "GB/T 50337-2018",
+    "name": "环境卫生设施设置标准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2019/art_17339_239845.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看主管部门发布文件并核对名称",
+    "status": "code-review",
+    "officialCode": "GB/T 50337-2018",
+    "officialName": "城市环境卫生设施规划标准",
+    "type": "official-publication"
+  },
+  "GB/T 19095-2019|生活垃圾分类标志": {
+    "code": "GB/T 19095-2019",
+    "name": "生活垃圾分类标志",
+    "url": "https://std.samr.gov.cn/gb/search/gbDetailed?id=961CE8F04E028BAEE05397BE0A0ACF1F",
+    "authority": "全国标准信息公共服务平台 · 国家标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GB / T 19095-2019",
+    "officialName": "生活垃圾分类标志",
+    "pid": "961CE8F04E028BAEE05397BE0A0ACF1F",
+    "type": "BV_GB"
+  },
+  "GB/T 15566.1-2020|公共信息导向系统 设置原则与要求 第1部分：总则": {
+    "code": "GB/T 15566.1-2020",
+    "name": "公共信息导向系统 设置原则与要求 第1部分：总则",
+    "url": "https://std.samr.gov.cn/gb/search/gbDetailed?id=A24AF19F41425C2EE05397BE0A0A5E0D",
+    "authority": "全国标准信息公共服务平台 · 国家标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GB / T 15566.1-2020",
+    "officialName": "公共信息导向系统 设置原则与要求 第1部分：总则",
+    "pid": "A24AF19F41425C2EE05397BE0A0A5E0D",
+    "type": "BV_GB"
+  },
+  "DB31 T 316-2023|城市景观照明技术规范": {
+    "code": "DB31 T 316-2023",
+    "name": "城市景观照明技术规范",
+    "url": "https://std.samr.gov.cn/db/search/stdDBDetailed?id=10D98F766AF21FBAE06397BE0A0AB7FF",
+    "authority": "全国标准信息公共服务平台 · 地方标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "DB31 / T 316-2023",
+    "officialName": "城市景观照明技术规范",
+    "pid": "10D98F766AF21FBAE06397BE0A0AB7FF",
+    "type": "BV_DB"
+  },
+  "GB 51018-2014|水土保持工程设计规范": {
+    "code": "GB 51018-2014",
+    "name": "水土保持工程设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224099.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 51018-2014",
+    "officialName": "水土保持工程设计规范",
+    "type": "official-publication"
+  },
+  "SL 74-2013|水利水电工程钢闸门设计规范": {
+    "code": "SL 74-2013",
+    "name": "水利水电工程钢闸门设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F21B83BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL 74-2013",
+    "officialName": "水利水电工程钢闸门设计规范",
+    "pid": "8B1827F21B83BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "GB 50318-2017|城市排水工程规划规范": {
+    "code": "GB 50318-2017",
+    "name": "城市排水工程规划规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2017/art_17339_231227.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50318-2017",
+    "officialName": "城市排水工程规划规范",
+    "type": "official-publication"
+  },
+  "GB 50054-2011|低压配电设计规范": {
+    "code": "GB 50054-2011",
+    "name": "低压配电设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2011/art_17339_206925.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50054-2011",
+    "officialName": "低压配电设计规范",
+    "type": "official-publication"
+  },
+  "NB T 10341.1~4-2019|水利水电工程启闭机设计规范 第1~4部分": {
+    "code": "NB T 10341.1~4-2019",
+    "name": "水利水电工程启闭机设计规范 第1~4部分",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D38B79E05397BE0A0AEFBA",
+    "authority": "全国标准信息公共服务平台 · 国家能源行业标准",
+    "label": "官方依据 · 第1部分",
+    "status": "code-review",
+    "officialCode": "NB/T 10341.1-2019 至 NB/T 10341.4-2023",
+    "officialName": "水电工程启闭机设计规范（分部分发布）",
+    "type": "official-series",
+    "links": [
+      {
+        "label": "官方依据 · 第1部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D38B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第2部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D48B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第3部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D58B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第4部分（2023）",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=18DB2D46B0DFD654E06397BE0A0AB4DA"
+      }
+    ]
+  },
+  "GB 5768.1-2025|道路交通标志和标线 第1部分：总则": {
+    "code": "GB 5768.1-2025",
+    "name": "道路交通标志和标线 第1部分：总则",
+    "url": "https://std.samr.gov.cn/gb/search/gbDetailed?id=33BE015BACE489EBE06397BE0A0A2966",
+    "authority": "全国标准信息公共服务平台 · 国家标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GB 5768.1-2025",
+    "officialName": "道路交通标志和标线 第1部分：总则",
+    "pid": "33BE015BACE489EBE06397BE0A0A2966",
+    "type": "BV_GB"
+  },
+  "GBT51439-2021|城市步行和自行车交通系统规划标 准": {
+    "code": "GBT51439-2021",
+    "name": "城市步行和自行车交通系统规划标 准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2021/art_17339_250179.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GBT51439-2021",
+    "officialName": "城市步行和自行车交通系统规划标 准",
+    "type": "official-publication"
+  },
+  "GA/T 1343-2016|防暴升降式阻车路障": {
+    "code": "GA/T 1343-2016",
+    "name": "防暴升降式阻车路障",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F19504BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GA / T 1343-2016",
+    "officialName": "防暴升降式阻车路障",
+    "pid": "8B1827F19504BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "CJJ 36-2016|城市道路养护技术规范": {
+    "code": "CJJ 36-2016",
+    "name": "城市道路养护技术规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2017/art_17339_231174.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看主管部门发布文件并核对名称",
+    "status": "code-review",
+    "officialCode": "CJJ 36-2016",
+    "officialName": "城镇道路养护技术规范",
+    "type": "official-publication"
+  },
+  "SL 74-2019|水利水电工程钢闸门设计规范": {
+    "code": "SL 74-2019",
+    "name": "水利水电工程钢闸门设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=A47E72031EA24788E05397BE0A0A7A9B",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL74-2019",
+    "officialName": "水利水电工程钢闸门设计规范",
+    "pid": "A47E72031EA24788E05397BE0A0A7A9B",
+    "type": "BV_HB"
+  },
+  "GB/T 14173-2008|水利水电工程钢闸门制造、安装及验收规范": {
+    "code": "GB/T 14173-2008",
+    "name": "水利水电工程钢闸门制造、安装及验收规范",
+    "url": "https://std.samr.gov.cn/gb/search/gbDetailed?id=71F772D7FFF7D3A7E05397BE0A0AB82A",
+    "authority": "全国标准信息公共服务平台 · 国家标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "GB / T 14173-2008",
+    "officialName": "水利水电工程钢闸门制造、安装及验收规范",
+    "pid": "71F772D7FFF7D3A7E05397BE0A0AB82A",
+    "type": "BV_GB"
+  },
+  "NB/T 10341.1~4-2019|水利水电工程启闭机设计规范 第1~4部分": {
+    "code": "NB/T 10341.1~4-2019",
+    "name": "水利水电工程启闭机设计规范 第1~4部分",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D38B79E05397BE0A0AEFBA",
+    "authority": "全国标准信息公共服务平台 · 国家能源行业标准",
+    "label": "官方依据 · 第1部分",
+    "status": "code-review",
+    "officialCode": "NB/T 10341.1-2019 至 NB/T 10341.4-2023",
+    "officialName": "水电工程启闭机设计规范（分部分发布）",
+    "type": "official-series",
+    "links": [
+      {
+        "label": "官方依据 · 第1部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D38B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第2部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D48B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第3部分",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=B93EFF4F39D58B79E05397BE0A0AEFBA"
+      },
+      {
+        "label": "官方依据 · 第4部分（2023）",
+        "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=18DB2D46B0DFD654E06397BE0A0AB4DA"
+      }
+    ]
+  },
+  "GB 50068-2018|建筑结构可靠性设计统一标准": {
+    "code": "GB 50068-2018",
+    "name": "建筑结构可靠性设计统一标准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2019/art_17339_239764.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50068-2018",
+    "officialName": "建筑结构可靠性设计统一标准",
+    "type": "official-publication"
+  },
+  "SL T105—2025|水工金属结构防腐蚀技术规范": {
+    "code": "SL T105—2025",
+    "name": "水工金属结构防腐蚀技术规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=513692AE0F99BA74E06397BE0A0AF4F6",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL/T 105-2025",
+    "officialName": "水工 金属结构 防腐蚀 技术规范",
+    "pid": "513692AE0F99BA74E06397BE0A0AF4F6",
+    "type": "BV_HB"
+  },
+  "GB 50286-2013|堤防工程设计规范": {
+    "code": "GB 50286-2013",
+    "name": "堤防工程设计规范",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2015/art_17339_224611.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50286-2013",
+    "officialName": "堤防工程设计规范",
+    "type": "official-publication"
+  },
+  "SL 104-2015|水利工程水利计算规范": {
+    "code": "SL 104-2015",
+    "name": "水利工程水利计算规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F14CC9BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看同名官方标准并核对编号",
+    "status": "code-review",
+    "officialCode": "SL/T 104-2015",
+    "officialName": "水利工程 水利 计算 规范",
+    "pid": "8B1827F14CC9BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "SL/T 171-2020|堤防工程管理设计规范": {
+    "code": "SL/T 171-2020",
+    "name": "堤防工程管理设计规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=D02CF23250430070E05397BE0A0A349C",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL/T 171—2020",
+    "officialName": "堤防工程管理设计规范",
+    "pid": "D02CF23250430070E05397BE0A0A349C",
+    "type": "BV_HB"
+  },
+  "SL 252-2017|水利水电工程等级划分及洪水标准": {
+    "code": "SL 252-2017",
+    "name": "水利水电工程等级划分及洪水标准",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F24785BB19E05397BE0A0AB44A",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL 252-2017",
+    "officialName": "水利水电工程等级划分及洪水标准",
+    "pid": "8B1827F24785BB19E05397BE0A0AB44A",
+    "type": "BV_HB"
+  },
+  "SL/T 105—2025|水工金属结构防腐蚀技术规范": {
+    "code": "SL/T 105—2025",
+    "name": "水工金属结构防腐蚀技术规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=513692AE0F99BA74E06397BE0A0AF4F6",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL / T 105-2025",
+    "officialName": "水工金属结构防腐蚀技术规范",
+    "pid": "513692AE0F99BA74E06397BE0A0AF4F6",
+    "type": "BV_HB"
+  },
+  "GB 50288-2018|灌溉与排水工程设计标准": {
+    "code": "GB 50288-2018",
+    "name": "灌溉与排水工程设计标准",
+    "url": "https://www.mohurd.gov.cn/gongkai/zc/wjk/art/2019/art_17339_240004.html",
+    "authority": "中华人民共和国住房和城乡建设部",
+    "label": "查看住房城乡建设部正式发布依据",
+    "status": "verified-publication",
+    "officialCode": "GB 50288-2018",
+    "officialName": "灌溉与排水工程设计标准",
+    "type": "official-publication"
+  },
+  "SL/T 278—2020|水利水电工程水文计算规范": {
+    "code": "SL/T 278—2020",
+    "name": "水利水电工程水文计算规范",
+    "url": "https://std.samr.gov.cn/hb/search/stdHBDetailed?id=D00845A9EC74241CE05397BE0A0A0B46",
+    "authority": "全国标准信息公共服务平台 · 行业标准",
+    "label": "查看官方认证详情",
+    "status": "verified",
+    "officialCode": "SL / T 278 — 2020",
+    "officialName": "水利水电工程水文计算规范",
+    "pid": "D00845A9EC74241CE05397BE0A0A0B46",
+    "type": "BV_HB"
+  }
+};

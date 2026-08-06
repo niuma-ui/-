@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<BIMPyPlugin>
+    <BfaLibName/>
+    <PluginVersion>1.0.0</PluginVersion>
+    <LoadStatus>true</LoadStatus>
+    <Category name="工具">
+        <Panel name="构件医生">
+            <Button name="检查选中构件">
+                <command>检查选中构件.py</command>
+            </Button>
+            <Button name="检查全部构件">
+                <command>检查全部构件.py</command>
+            </Button>
+            <Button name="检查活动模型">
+                <command>检查活动模型.py</command>
+            </Button>
+            <Button name="诊断构件读取">
+                <command>诊断构件读取.py</command>
+            </Button>
+            <Button name="诊断选中构件属性">
+                <command>诊断选中构件属性.py</command>
+            </Button>
+        </Panel>
+    </Category>
+</BIMPyPlugin>

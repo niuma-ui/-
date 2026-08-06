@@ -1,0 +1,7 @@
+{
+  "serverUrl": "http://127.0.0.1:4174",
+  "token": "",
+  "projectName": "BIMBase 当前工程",
+  "batchSize": 200,
+  "timeout": 120
+}

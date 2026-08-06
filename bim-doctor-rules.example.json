@@ -1,0 +1,19 @@
+{
+  "rules": [
+    {
+      "id": "REPLACE-WITH-REVIEWED-RULE-001",
+      "enabled": false,
+      "title": "示例：构件尺寸下限",
+      "componentTypes": ["示例构件类型"],
+      "field": "parameters.width",
+      "operator": ">=",
+      "value": 0,
+      "unit": "mm",
+      "severity": "major",
+      "standardCode": "请填写规范编号",
+      "clause": "请填写条文号",
+      "query": "请填写用于规范库检索的完整问题",
+      "suggestion": "请填写经审核的整改建议"
+    }
+  ]
+}
