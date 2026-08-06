@@ -38,12 +38,38 @@ function compare(actual, operator, expected) {
   return left <= right;
 }
 
-function matchesComponent(rule, component) {
-  const types = (rule.componentTypes || ['*']).map((value) => text(value).toLowerCase());
-  const candidates = [component.componentType, component.componentTypeRaw, component.name]
-    .map((value) => text(value).toLowerCase())
-    .filter(Boolean);
-  return types.includes('*') || types.some((type) => candidates.some((candidate) => candidate === type || candidate.includes(type)));
+function matchesValues(expected = ['*'], actual = []) {
+  const patterns = expected.map((value) => text(value).toLowerCase()).filter(Boolean);
+  const candidates = actual.map((value) => text(value).toLowerCase()).filter(Boolean);
+  return patterns.includes('*') || patterns.some((pattern) => candidates.some((candidate) => candidate === pattern || candidate.includes(pattern)));
+}
+
+function matchesComponent(rule, component, project = {}) {
+  // name/shapeName are geometric labels (e.g. "长方体"), never compliance classification.
+  const checks = [
+    [rule.projectTypes, [project.type, project.name]],
+    [rule.disciplines, [project.discipline]],
+    [rule.systemTypes, [component.systemType, component.system]],
+    [rule.assemblyTypes, [component.assemblyType, component.assembly, component.category]],
+    [rule.componentTypes, [component.componentType, component.componentTypeRaw, component.semanticType]]
+  ].filter(([expected]) => Array.isArray(expected) && expected.length);
+  return checks.length === 0 || checks.every(([expected, actual]) => matchesValues(expected, actual));
+}
+
+function complianceContext(project, component) {
+  return [
+    project.type,
+    project.discipline,
+    project.name,
+    component.systemType,
+    component.system,
+    component.assemblyType,
+    component.assembly,
+    component.category,
+    component.semanticType,
+    component.componentType,
+    component.componentTypeRaw
+  ].map(text).filter(Boolean).join(' ');
 }
 
 function formatExpected(rule) {
@@ -178,10 +204,10 @@ export class BimDoctor {
     return cache.get(key);
   }
 
-  evaluateComponent(component, rules, sourceCache) {
-    const applicable = rules.filter((rule) => rule.enabled !== false && matchesComponent(rule, component));
+  evaluateComponent(component, rules, sourceCache, project = {}) {
+    const applicable = rules.filter((rule) => rule.enabled !== false && matchesComponent(rule, component, project));
     if (!applicable.length) {
-      const query = `${component.componentType || component.componentTypeRaw || component.name || '水利水电构件'} 设计规范 要求`;
+      const query = `${complianceContext(project, component) || '工程整体 构件系统'} 适用规范 设计要求`;
       return {
         entityId: component.entityId,
         status: 'NEED_RULE',
@@ -195,7 +221,7 @@ export class BimDoctor {
       const actual = getField(component, rule.field);
       const missing = actual === undefined || actual === null || actual === '';
       const passed = !missing && compare(actual, rule.operator, rule.value);
-      const query = rule.query || `${rule.standardCode || ''} ${rule.clause || ''} ${rule.title || component.componentType || ''}`;
+      const query = rule.query || `${rule.standardCode || ''} ${rule.clause || ''} ${rule.title || complianceContext(project, component)}`;
       return {
         ruleId: rule.id,
         status: missing ? 'NEED_DATA' : (passed ? 'PASS' : 'FAIL'),
@@ -232,7 +258,7 @@ export class BimDoctor {
     const sourceCache = new Map();
     job.results = job.components.map((component) => {
       try {
-        return this.evaluateComponent(component, rules, sourceCache);
+        return this.evaluateComponent(component, rules, sourceCache, job.project);
       } catch (error) {
         return { entityId: component.entityId, status: 'ERROR', summary: error.message, issues: [], sources: [] };
       }

@@ -17,6 +17,7 @@ const doctor = new BimDoctor({
 await doctor.initialize();
 await doctor.setRules([{
   id: 'WIDTH-001',
+  projectTypes: ['水工建筑'],
   componentTypes: ['wall'],
   field: 'parameters.width',
   operator: '>=',
@@ -25,7 +26,7 @@ await doctor.setRules([{
   standardCode: 'TEST-1',
   clause: '3.1'
 }]);
-const job = await doctor.createJob({ project: { name: '测试工程' } });
+const job = await doctor.createJob({ project: { name: '测试工程', type: '水工建筑' } });
 await doctor.addComponents(job.id, [
   { entityId: '1:1', componentType: 'wall', parameters: { width: 240 } },
   { entityId: '1:2', componentType: 'wall', parameters: { width: 180 } },
@@ -35,8 +36,15 @@ const result = await doctor.runJob(job.id);
 assert.deepEqual(result.summary, { total: 3, pass: 1, fail: 1, warning: 0, needRule: 0, needData: 1, error: 0 });
 assert.equal(result.results[1].issues[0].actual, 180);
 assert.equal(result.results[2].status, 'NEED_DATA');
+
+const shapeOnlyJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
+await doctor.addComponents(shapeOnlyJob.id, [
+  { entityId: '2:1', name: '长方体', shapeName: '长方体', componentType: null, parameters: { width: 240 } }
+]);
+const shapeOnlyResult = await doctor.runJob(shapeOnlyJob.id);
+assert.equal(shapeOnlyResult.results[0].status, 'NEED_RULE');
 const jobs = await doctor.listJobs();
-assert.equal(jobs.length, 1);
-assert.equal(jobs[0].id, job.id);
+assert.equal(jobs.length, 2);
+assert.ok(jobs.some((item) => item.id === job.id));
 assert.equal(jobs[0].components, undefined);
 console.log('bim-doctor self-test passed');

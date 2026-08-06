@@ -8,6 +8,8 @@
 4. 知识库检索候选规范，并使用 `bim-doctor-rules.json` 中经审核的规则判定。
 5. 没有机器规则时返回 `NEED_RULE`，不会把“检索到规范”误报为“符合规范”。
 
+构件名称仅作为几何形状展示（如“长方体”），不参与规范归类。规范归类优先使用当前 `.p3d` 工程身份，以及规则中的 `projectTypes`、`disciplines`、`systemTypes`、`assemblyTypes` 和语义 `componentTypes`。
+
 ## 运行
 
 先双击项目根目录的 `启动知识库.cmd`，或执行：

@@ -3,6 +3,7 @@
 from __future__ import print_function
 
 import argparse
+import ctypes
 import json
 import os
 import re
@@ -109,6 +110,30 @@ def read_property_panel(script_path):
         creationflags=0x08000000
     ).decode("utf-8-sig")
     return {row["name"]: row["value"] for row in json.loads(output)}
+
+
+def detect_project_context(config):
+    """Read the active .p3d identity; the file/project is compliance context, not the solid shape name."""
+    title = ""
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        size = ctypes.windll.user32.GetWindowTextLengthW(hwnd) + 1
+        buffer = ctypes.create_unicode_buffer(max(size, 2))
+        ctypes.windll.user32.GetWindowTextW(hwnd, buffer, len(buffer))
+        title = buffer.value
+    except Exception:
+        pass
+    match = re.search(r"\[([^\[\]]+\.p3d)\]", title, re.I)
+    project_path = match.group(1) if match else ""
+    detected_name = os.path.splitext(os.path.basename(project_path))[0] if project_path else ""
+    return {
+        "name": detected_name or config.get("projectName", "BIMBase 当前工程"),
+        "fileName": os.path.basename(project_path) if project_path else None,
+        "path": project_path or None,
+        "type": config.get("projectType"),
+        "discipline": config.get("discipline"),
+        "stage": config.get("stage")
+    }
 
 
 def safe_call(function, *args):
@@ -342,7 +367,8 @@ def extract_selected_component(panel_script):
     component["rawProperties"] = raw
     component["parameters"] = normalize_parameters(raw)
     component["name"] = first_value(raw, ALIASES["name"]) or component["name"]
-    component["componentType"] = component["name"]
+    component["shapeName"] = component["name"]
+    component["componentType"] = None
     component["geometry"] = {
         key: value for key, aliases in {
             "volume": ("体积", "volume"),
@@ -380,11 +406,7 @@ class ApiClient(object):
 def send_job(config, components):
     client = ApiClient(config["serverUrl"], config.get("token", ""), config.get("timeout", 120))
     job = client.request("POST", "/api/bim-doctor/jobs", {
-        "project": {
-            "name": config.get("projectName", "BIMBase 当前工程"),
-            "source": "BIMBase",
-            "sourceVersion": "2025"
-        }
+        "project": dict(detect_project_context(config), source="BIMBase", sourceVersion="2025")
     })
     batch_size = max(1, int(config.get("batchSize", 200)))
     for start in range(0, len(components), batch_size):
