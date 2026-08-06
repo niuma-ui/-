@@ -997,6 +997,48 @@
       if (window.matchMedia('(min-width: 791px)').matches && allData.length) selectRecord(allData[0].id);
     })();
   </script>
+  <script>
+    (function () {
+      'use strict';
+      var panel = document.getElementById('doctorPanel');
+      if (!panel) return;
+      var selectedId = null;
+      var jobs = [];
+      var $ = function (id) { return document.getElementById(id); };
+      var esc = function (value) { return String(value == null ? '' : value).replace(/[&<>\"']/g, function (char) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[char]; }); };
+      var api = function (path) { return fetch(path, { headers: { 'X-BIM-Bridge-Token': '' } }).then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); }); };
+      function setService(text, tone) { $('doctorServiceStatus').className = 'doctor-service-status ' + (tone || ''); $('doctorServiceStatus').querySelector('span').textContent = text; $('doctorNavStatus').textContent = tone === 'ready' ? '已连接' : '待连接'; }
+      function renderJobs() {
+        $('doctorJobCount').textContent = jobs.length + ' 项';
+        $('doctorJobList').innerHTML = jobs.length ? jobs.map(function (job) {
+          var project = job.project && job.project.name || '当前工程';
+          var summary = job.summary || {};
+          return '<button class="doctor-job ' + (job.id === selectedId ? 'active' : '') + '" type="button" data-job="' + esc(job.id) + '"><b>' + esc(project) + '</b><small>' + esc(new Date(job.updatedAt || job.createdAt).toLocaleString()) + ' · ' + (summary.total || 0) + ' 构件 · 待规则 ' + (summary.needRule || 0) + '</small></button>';
+        }).join('') : '<p class="doctor-empty">BIMBase 提交检查后，任务会显示在这里。</p>';
+        Array.prototype.forEach.call(document.querySelectorAll('[data-job]'), function (button) { button.addEventListener('click', function () { selectJob(button.dataset.job); }); });
+      }
+      function renderResults(job) {
+        var summary = job && job.summary || {};
+        $('doctorTotal').textContent = summary.total == null ? '—' : summary.total;
+        $('doctorPass').textContent = summary.pass || 0;
+        $('doctorFail').textContent = summary.fail || 0;
+        $('doctorPending').textContent = (summary.needRule || 0) + (summary.needData || 0);
+        $('doctorResultCount').textContent = job ? (summary.total || 0) + ' 项' : '未选择任务';
+        if (!job) { $('doctorResultList').innerHTML = '<p class="doctor-empty">选择一项检查任务查看构件结论和规范依据。</p>'; return; }
+        var results = job.results || [];
+        $('doctorResultList').innerHTML = results.length ? results.map(function (result) {
+          var issues = (result.issues || []).map(function (issue) { return '<div class="doctor-issue">' + esc(issue.title || issue.ruleId) + '：实际 ' + esc(issue.actual == null ? '缺失' : issue.actual) + '，预期 ' + esc(issue.expected || '') + '</div>'; }).join('');
+          var sources = (result.sources || []).map(function (source) { return '<small>依据：' + esc(source.code || source.title) + ' 第' + esc(source.page) + '页</small>'; }).join('<br>');
+          return '<article class="doctor-result" data-status="' + esc(result.status) + '"><b>' + esc(result.entityId) + ' · ' + esc(result.status) + '</b><small>' + esc(result.summary || '') + '</small>' + issues + (sources ? '<div class="doctor-issue">' + sources + '</div>' : '') + '</article>';
+        }).join('') : '<p class="doctor-empty">该任务暂无结果。</p>';
+      }
+      function selectJob(id) { selectedId = id; renderJobs(); api('/api/bim-doctor/jobs/' + encodeURIComponent(id) + '/results').then(function (job) { renderResults(job); }).catch(function (error) { setService('结果读取失败：' + error.message, 'error'); }); }
+      function refresh() { setService('正在读取构件医生任务…', ''); return Promise.all([api('/api/bim-doctor/status'), api('/api/bim-doctor/jobs?limit=20')]).then(function (values) { setService(values[0].knowledgeReady ? '知识库与桥接服务已连接 · 已审核规则 ' + values[0].ruleCount + ' 条' : '服务已连接，知识库索引未就绪', values[0].knowledgeReady ? 'ready' : ''); jobs = values[1].jobs || []; selectedId = selectedId && jobs.some(function (job) { return job.id === selectedId; }) ? selectedId : (jobs[0] && jobs[0].id); renderJobs(); return selectedId ? selectJob(selectedId) : renderResults(null); }).catch(function (error) { setService('桥接服务未连接：' + error.message, 'error'); jobs = []; renderJobs(); renderResults(null); }); }
+      function open() { panel.classList.add('open'); panel.removeAttribute('inert'); panel.setAttribute('aria-hidden', 'false'); $('openBimDoctor').setAttribute('aria-expanded', 'true'); refresh(); }
+      function close() { panel.classList.remove('open'); panel.setAttribute('inert', ''); panel.setAttribute('aria-hidden', 'true'); $('openBimDoctor').setAttribute('aria-expanded', 'false'); }
+      $('openBimDoctor').addEventListener('click', open); $('doctorClose').addEventListener('click', close); $('doctorRefresh').addEventListener('click', refresh); refresh();
+    })();
+  </script>
   <script src="ios-workbench.js"></script>
 </body>
 </html>
