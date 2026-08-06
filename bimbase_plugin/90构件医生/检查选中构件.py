@@ -19,9 +19,10 @@ import bridge
 bridge = importlib.reload(bridge)
 
 component = bridge.extract_selected_component(os.path.join(plugin_dir, "读取属性面板.ps1"))
-result = bridge.send_job(
-    bridge.load_config(os.path.join(bridge_dir, "config.json")),
-    [component]
-)
+config = bridge.load_config(os.path.join(bridge_dir, "config.json"))
+project = bridge.detect_project_context(config)
+project["checkScope"] = "component"
+project["targetEntityId"] = component["entityId"]
+result = bridge.send_job(config, [component], project)
 summary = result.get("summary", {})
 messages("选中构件检查完成：通过 %(pass)s，不符合 %(fail)s，待规则 %(needRule)s，缺数据 %(needData)s" % summary)

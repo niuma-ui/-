@@ -172,11 +172,17 @@ export class BimDoctor {
   }
 
   async nextSnapshotVersion(project) {
-    const identity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || ''}`);
+    const baseIdentity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || ''}`);
+    const scope = text(project.checkScope) || 'project';
+    const target = scope === 'component' ? text(project.targetEntityId) : '';
+    const identity = `${baseIdentity}|${scope}|${target}`;
     const jobs = await this.listJobs(100);
     const versions = jobs.filter((job) => {
       const current = job.project || {};
-      return text(current.path || current.fileName || `${current.source || 'BIMBase'}:${current.name || ''}`) === identity;
+      const currentBase = text(current.path || current.fileName || `${current.source || 'BIMBase'}:${current.name || ''}`);
+      const currentScope = text(current.checkScope) || 'project';
+      const currentTarget = currentScope === 'component' ? text(current.targetEntityId) : '';
+      return `${currentBase}|${currentScope}|${currentTarget}` === identity;
     }).map((job) => Number(job.project?.snapshotVersion) || 0);
     return (versions.length ? Math.max(...versions) : 0) + 1;
   }
@@ -339,8 +345,14 @@ export class BimDoctor {
   async createJob(body = {}) {
     const project = await this.resolveProjectContext(body.project || {});
     if (!text(project.name)) throw httpError('project.name 不能为空');
-    project.snapshotVersion = await this.nextSnapshotVersion(project);
     const components = Array.isArray(body.components) ? body.components : [];
+    if (!text(project.checkScope) && components.length) {
+      project.checkScope = components.length === 1 ? 'component' : 'project';
+    }
+    if (project.checkScope === 'component' && !text(project.targetEntityId) && components.length === 1) {
+      project.targetEntityId = text(components[0].entityId);
+    }
+    project.snapshotVersion = await this.nextSnapshotVersion(project);
     const now = new Date().toISOString();
     const job = {
       id: crypto.randomUUID(),
@@ -373,6 +385,10 @@ export class BimDoctor {
       byId.set(entityId, { ...component, entityId });
     }
     job.components = [...byId.values()];
+    if (!text(job.project?.checkScope) && components.length) {
+      job.project.checkScope = job.components.length === 1 ? 'component' : 'project';
+      if (job.project.checkScope === 'component') job.project.targetEntityId = text(job.components[0].entityId);
+    }
     job.updatedAt = new Date().toISOString();
     job.summary.total = job.components.length;
   }
@@ -489,7 +505,12 @@ export class BimDoctor {
     const latestByProject = new Map();
     for (const job of jobs.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))) {
       const project = job.project || {};
-      const identity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || job.id}`);
+      const baseIdentity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || job.id}`);
+      const scope = text(project.checkScope) || (Array.isArray(job.components) && job.components.length === 1 ? 'component' : 'project');
+      const target = scope === 'component'
+        ? text(project.targetEntityId || job.components?.[0]?.entityId)
+        : '';
+      const identity = `${baseIdentity}|${scope}|${target}`;
       if (!latestByProject.has(identity)) latestByProject.set(identity, job);
     }
     return [...latestByProject.values()]
@@ -499,6 +520,14 @@ export class BimDoctor {
 
   jobView(job, includeComponents = false, includeResults = false) {
     const view = { ...job };
+    const project = { ...(job.project || {}) };
+    if (!text(project.checkScope)) {
+      project.checkScope = Array.isArray(job.components) && job.components.length === 1 ? 'component' : 'project';
+    }
+    if (project.checkScope === 'component' && !text(project.targetEntityId) && job.components?.length === 1) {
+      project.targetEntityId = text(job.components[0].entityId);
+    }
+    view.project = project;
     if (!includeComponents) delete view.components;
     if (!includeResults) delete view.results;
     return view;

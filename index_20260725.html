@@ -1031,8 +1031,9 @@
         $('doctorJobCount').textContent = jobs.length + ' 项';
         $('doctorJobList').innerHTML = jobs.length ? jobs.map(function (job) {
           var project = job.project && job.project.name || '当前工程';
+          var scope = job.project && job.project.checkScope === 'component' ? '单构件 · ' + (job.project.targetEntityId || '') : '工程快照';
           var summary = job.summary || {};
-          return '<button class="doctor-job ' + (job.id === selectedId ? 'active' : '') + '" type="button" data-job="' + esc(job.id) + '"><b>' + esc(project) + '</b><small>' + esc(new Date(job.updatedAt || job.createdAt).toLocaleString()) + ' · ' + (summary.total || 0) + ' 构件 · 待规则 ' + (summary.needRule || 0) + '</small></button>';
+          return '<button class="doctor-job ' + (job.id === selectedId ? 'active' : '') + '" type="button" data-job="' + esc(job.id) + '"><b>' + esc(project) + '</b><small>' + esc(scope) + ' · ' + esc(new Date(job.updatedAt || job.createdAt).toLocaleString()) + ' · ' + (summary.total || 0) + ' 构件 · 待规则 ' + (summary.needRule || 0) + '</small></button>';
         }).join('') : '<p class="doctor-empty">BIMBase 提交检查后，任务会显示在这里。</p>';
         Array.prototype.forEach.call(document.querySelectorAll('[data-job]'), function (button) { button.addEventListener('click', function () { selectJob(button.dataset.job); }); });
       }

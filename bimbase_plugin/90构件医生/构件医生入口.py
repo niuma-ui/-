@@ -41,7 +41,11 @@ def run(scope):
                 log.write(message + "\n")
             notify(message)
             return {"summary": {"total": 0, "pass": 0, "fail": 0, "needRule": 0, "needData": 0, "error": 0}}
-        result = bridge.send_job(bridge.load_config(config_path), components)
+        config = bridge.load_config(config_path)
+        project = bridge.detect_project_context(config)
+        project["checkScope"] = "project"
+        project["modelScope"] = scope
+        result = bridge.send_job(config, components, project)
         summary = result.get("summary", {})
         notify(
             "构件医生完成：总数 %(total)s，通过 %(pass)s，不符合 %(fail)s，"

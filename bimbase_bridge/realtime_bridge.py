@@ -105,6 +105,10 @@ def main():
                 component = panel_component(raw)
             except Exception:
                 raw, component = {}, None
+            if component:
+                project = dict(project)
+                project["checkScope"] = "component"
+                project["targetEntityId"] = component["entityId"]
             heartbeat = {
                 "mode": "realtime",
                 "pid": os.getpid(),

@@ -429,6 +429,9 @@ class ApiClient(object):
 def send_job(config, components, project_override=None):
     client = ApiClient(config["serverUrl"], config.get("token", ""), config.get("timeout", 120))
     project = dict(project_override or detect_project_context(config), source="BIMBase", sourceVersion="2025")
+    project.setdefault("checkScope", "component" if len(components) == 1 else "project")
+    if project["checkScope"] == "component" and components:
+        project.setdefault("targetEntityId", components[0].get("entityId"))
     try:
         rules = client.request("GET", "/api/bim-doctor/rules").get("rules", [])
     except Exception:
