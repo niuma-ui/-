@@ -19,7 +19,9 @@ if os.path.exists(pid_path):
         raise SystemExit
     except (ValueError, OSError):
         pass
-python_exe = sys.executable
+python_exe = os.path.join(install_root, "PythonScript", "python-3.7.9-embed-amd64", "python.exe")
+if not os.path.exists(python_exe):
+    python_exe = sys.executable
 script = os.path.join(bridge_dir, "realtime_bridge.py")
 panel = os.path.join(plugin_dir, "读取属性面板.ps1")
 subprocess.Popen([python_exe, script, "--config", os.path.join(bridge_dir, "config.json"), "--panel-script", panel],

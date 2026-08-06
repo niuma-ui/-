@@ -474,6 +474,7 @@
         citationPreview.setAttribute('role', 'tooltip');
         document.body.appendChild(citationPreview);
         window.addEventListener('resize', function () { hideCitationPreview(true); });
+        window.addEventListener('blur', function () { hideCitationPreview(true); });
         document.addEventListener('scroll', function () { hideCitationPreview(true); }, true);
         return citationPreview;
       }
@@ -549,6 +550,8 @@
             button.addEventListener('focus', function () { showCitationPreview(button, source, sourceNumber); });
             button.addEventListener('blur', function () { hideCitationPreview(true); });
             button.addEventListener('click', function () {
+              hideCitationPreview(true);
+              button.blur();
               showEvidence(source);
               window.open(evidenceLink(source), '_blank', 'noopener,noreferrer');
             });
