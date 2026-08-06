@@ -127,7 +127,7 @@ def detect_project_context(config):
                 titles.append(buffer.value)
             return True
         ctypes.windll.user32.EnumWindows(callback_type(callback), 0)
-        title = next((item for item in titles if re.search(r"\.p3d\]", item, re.I)), "")
+        title = next((item for item in titles if re.search(r"\.p3d\s*\]", item, re.I)), "")
         if not title:
             hwnd = ctypes.windll.user32.GetForegroundWindow()
             size = ctypes.windll.user32.GetWindowTextLengthW(hwnd) + 1
@@ -136,8 +136,8 @@ def detect_project_context(config):
             title = buffer.value
     except Exception:
         pass
-    match = re.search(r"\[([^\[\]]+\.p3d)\]", title, re.I)
-    project_path = match.group(1) if match else ""
+    match = re.search(r"\[\s*([^\[\]]+?\.p3d)\s*\]", title, re.I)
+    project_path = match.group(1).strip() if match else ""
     detected_name = os.path.splitext(os.path.basename(project_path))[0] if project_path else ""
     return {
         "name": detected_name or config.get("projectName", "BIMBase 当前工程"),
@@ -310,6 +310,39 @@ def base_component(entity_id):
     }
 
 
+def entity_property_metadata(sdk, entity_ids):
+    """Read official lightweight entity metadata in one call; no geometry APIs are used."""
+    try:
+        values = sdk.get_entity_property(target=entity_ids)
+    except Exception as error:
+        extraction_log("get_entity_property batch error %s" % error)
+        return {}
+    result = {}
+    for value in value_list(values):
+        read = lambda name: value.get(name) if isinstance(value, dict) else safe_attr(value, name)
+        model_id = read("model_id")
+        entity_id = read("entity_id")
+        if is_entity_id(entity_id):
+            token = object_token(entity_id)
+        else:
+            model_number = safe_attr(model_id, "_ModelId") if is_model_id(model_id) else model_id
+            token = "%s:%s" % (model_number, entity_id) if model_number is not None and entity_id is not None else None
+        if not token:
+            continue
+        result[token] = {
+            "schemaName": read("schemaname"),
+            "componentTypeRaw": read("classname"),
+            "levelName": read("levelname"),
+            "display": {
+                "color": read("entity_color"),
+                "weight": read("entity_weight"),
+                "style": read("entity_style")
+            }
+        }
+    extraction_log("get_entity_property batch done values=%d mapped=%d" % (len(value_list(values)), len(result)))
+    return result
+
+
 def enrich_component_details(sdk, entity_id, component):
     entity_token = component["entityId"]
     errors = component["extractionErrors"]
@@ -360,6 +393,7 @@ def enrich_component_details(sdk, entity_id, component):
 def extract_components(scope="all"):
     sdk = load_sdk()
     entity_ids = project_entity_ids(sdk, scope)
+    metadata = entity_property_metadata(sdk, entity_ids)
 
     read_details = os.environ.get("BIM_DOCTOR_READ_DETAILS") == "1"
     extraction_log("extract_components scope=%s ids=%d read_details=%s" % (scope, len(entity_ids), read_details))
@@ -370,6 +404,7 @@ def extract_components(scope="all"):
         entity_token = object_token(entity_id)
         runtime_ids[entity_token] = entity_id
         component = base_component(entity_id)
+        component.update(metadata.get(entity_token, {}))
         extraction_log("component %s: base captured" % entity_token)
         if read_details:
             component = enrich_component_details(sdk, entity_id, component)

@@ -18,11 +18,23 @@ const doctor = new BimDoctor({
 });
 
 await doctor.initialize();
-await doctor.setContextMappings([{ id: 'MAP-1', match: 'mapped-project', projectType: '水工建筑', discipline: '结构' }]);
+await doctor.setContextMappings([{
+  id: 'MAP-1', match: 'mapped-project', projectType: '水工建筑', discipline: '结构',
+  componentMappings: [{
+    id: 'MODEL-10', when: { modelId: '10' }, systemType: '输水系统', assemblyType: '闸室组件',
+    semanticType: '检修闸门', role: '检修隔断', material: '钢'
+  }]
+}]);
 const mappedJob = await doctor.createJob({ project: { name: 'mapped-project', path: 'D:/mapped-project.p3d' } });
 assert.equal(mappedJob.project.type, '水工建筑');
 assert.equal(mappedJob.project.discipline, '结构');
 assert.equal(mappedJob.project.snapshotVersion, 1);
+await doctor.addComponents(mappedJob.id, [{ entityId: '10:1', modelId: 10, name: '长方体', shapeName: '长方体', parameters: {} }]);
+const mappedProfile = doctor.projectProfile(await doctor.readJob(mappedJob.id));
+assert.equal(mappedProfile.systems[0].name, '输水系统');
+assert.equal(mappedProfile.componentTypes[0].name, '检修闸门');
+assert.equal(mappedProfile.components[0].role, '检修隔断');
+assert.equal(mappedProfile.components[0].classification.shapeNameUsed, false);
 await assert.rejects(() => doctor.setRules([{
   id: 'UNREVIEWED', componentTypes: ['wall'], field: 'parameters.width', operator: '>=', value: 200,
   unit: 'mm', standardCode: 'TEST-1', clause: '3.1'

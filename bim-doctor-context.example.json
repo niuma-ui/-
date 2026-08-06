@@ -8,7 +8,19 @@
       "match": "请填写工程文件名或路径关键词",
       "projectType": "请填写工程类型",
       "discipline": "请填写专业",
-      "stage": "请填写设计阶段"
+      "stage": "请填写设计阶段",
+      "componentMappings": [
+        {
+          "id": "COMPONENT-001",
+          "enabled": true,
+          "when": { "modelId": "请填写 BIMBase ModelId" },
+          "systemType": "请填写所属系统",
+          "assemblyType": "请填写所属整体组件",
+          "semanticType": "请填写语义构件类型",
+          "role": "请填写工程作用",
+          "material": "请填写明确材质；未知时删除本字段"
+        }
+      ]
     }
   ]
 }

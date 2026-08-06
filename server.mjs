@@ -327,13 +327,16 @@ async function handleStreamingQuery(request, response) {
 
   writeEvent('start', { sessionId: session.id });
   try {
-    if (snapshot && snapshot.result && /(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
-      const compliance = { status: snapshot.result.status, summary: snapshot.result.summary, issues: snapshot.result.issues || [] };
-      const answer = complianceAnswer(snapshot);
-      await Promise.resolve(writeEvent('meta', { sources: snapshot.result.sources || [], documents: [], suggestions: [], resolvedQuestion: question }));
+    const scope = doctorQuestionScope(question);
+    const compliance = scope === 'project' ? snapshot?.projectCompliance : snapshot?.result;
+    if (snapshot && compliance && /(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
+      const complianceView = { status: compliance.status, summary: compliance.summary, issues: compliance.issues || [] };
+      const sources = scope === 'project' ? [] : (snapshot.result?.sources || []);
+      const answer = complianceAnswer(snapshot, scope);
+      await Promise.resolve(writeEvent('meta', { sources, documents: [], suggestions: [], resolvedQuestion: question }));
       await Promise.resolve(writeEvent('delta', { delta: answer }));
-      remember(session, question, { answer, sources: snapshot.result.sources || [], documents: [], suggestions: [], mode: 'rule-engine', resolvedQuestion: question, compliance });
-      writeEvent('done', { sessionId: session.id, mode: 'rule-engine', model: null, warning: null, sources: snapshot.result.sources || [], documents: [], suggestions: [], resolvedQuestion: question, compliance });
+      remember(session, question, { answer, sources, documents: [], suggestions: [], mode: 'rule-engine', resolvedQuestion: question, compliance: complianceView });
+      writeEvent('done', { sessionId: session.id, mode: 'rule-engine', model: null, warning: null, sources, documents: [], suggestions: [], resolvedQuestion: question, compliance: complianceView });
       return;
     }
     const contextualQuestion = hasBimContext ? doctorContextPrompt(snapshot, question) : question;
@@ -361,31 +364,58 @@ async function handleStreamingQuery(request, response) {
   }
 }
 
+function profileGroupText(groups = []) {
+  return groups.slice(0, 12).map((group) => `${group.name}(${group.count})`).join('、') || '无数据';
+}
+
+function doctorQuestionScope(question) {
+  if (/(整体|整个|全项目|全工程|项目整体|工程整体|全部构件|各类构件|系统组成|项目组成)/.test(question)) return 'project';
+  if (/(当前构件|这个构件|该构件|选中构件|单个构件|entity\s*id)/i.test(question)) return 'component';
+  return 'auto';
+}
+
 function doctorContextPrompt(snapshot, question) {
   const project = snapshot.project || {};
+  const profile = snapshot.projectProfile || {};
   const component = snapshot.component || {};
   const result = snapshot.result || {};
   const parameters = Object.entries(component.parameters || {}).map(([key, value]) => `${key}=${value}`).join('，');
   const issues = (result.issues || []).map((issue) => `${issue.title || issue.ruleId}: 实际${issue.actual ?? '缺失'}，预期${issue.expected || ''}`).join('；');
+  const componentIndex = (profile.components || []).slice(0, 60).map((item) =>
+    `${item.entityId}[系统=${item.systemType || '未识别'},组件=${item.assemblyType || '未识别'},类型=${item.semanticType || '未识别'},作用=${item.role || '未识别'},材质=${item.material || '未识别'},SDK类=${item.className || '无'},层级=${item.levelName || '无'}]`
+  ).join('；');
   return [
-    `BIMBase实时项目上下文：项目=${project.name || '未知'}，工程类型=${project.type || '未分类'}，专业=${project.discipline || '未填写'}，系统=${component.systemType || component.system || '未识别'}，整体组件=${component.assemblyType || component.assembly || '未识别'}`,
-    `当前构件：entityId=${component.entityId || '未选中'}，形状名称=${component.shapeName || component.name || '未知'}，语义类型=${component.semanticType || component.componentType || '未识别'}，参数=${parameters || '无'}`,
+    `BIMBase整体工程：项目=${project.name || '未知'}，工程类型=${project.type || '未分类'}，专业=${project.discipline || '未填写'}，阶段=${project.stage || '未填写'}，构件数=${profile.componentCount ?? '未知'}，模型数=${profile.modelCount ?? '未知'}`,
+    `工程组成：系统=${profileGroupText(profile.systems)}；整体组件=${profileGroupText(profile.assemblies)}；构件类型=${profileGroupText(profile.componentTypes)}；材质=${profileGroupText(profile.materials)}`,
+    `分类质量：完整=${profile.dataQuality?.classified || 0}，部分=${profile.dataQuality?.partial || 0}，未识别=${profile.dataQuality?.unclassified || 0}`,
+    `工程构件目录：${componentIndex || '尚未取得构件语义信息'}`,
+    `当前构件：entityId=${component.entityId || '未选中'}，系统=${component.systemType || '未识别'}，整体组件=${component.assemblyType || '未识别'}，语义类型=${component.semanticType || '未识别'}，作用=${component.role || '未识别'}，材质=${component.material || '未识别'}，参数=${parameters || '无'}`,
     `机器规则结论：${result.status || 'NEED_RULE'}；${result.summary || '尚无已审核机器规则'}${issues ? `；问题=${issues}` : ''}`,
     `用户问题：${question}`,
-    '请只依据检索到的规范正文回答；不要把形状名称当作规范类别。涉及是否合规时，先明确机器规则状态；NEED_RULE/NEED_DATA 不得回答为合格。'
+    '先判断用户询问的是整体工程还是单构件，再按系统、整体组件、构件类型、作用、材质和参数回答。只依据结构化 BIM 语义与检索到的规范正文；形状名称不参与分类。未识别字段必须说明缺失，不得猜测。涉及是否合规时先明确机器规则状态；NEED_RULE/NEED_DATA 不得回答为合格。'
   ].join('\n');
 }
 
 function doctorContextTerms(snapshot) {
   const project = snapshot.project || {};
+  const profile = snapshot.projectProfile || {};
   const component = snapshot.component || {};
-  return [project.type, project.discipline, project.name, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType]
+  return [project.type, project.discipline, project.name, component.systemType, component.system, component.assemblyType, component.assembly, component.semanticType, component.componentType,
+    ...(profile.systems || []).map((item) => item.name), ...(profile.assemblies || []).map((item) => item.name), ...(profile.componentTypes || []).map((item) => item.name)]
     .map((value) => String(value || '').trim())
-    .filter((value) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别)/.test(value));
+    .filter((value, index, values) => value.length >= 2 && !/^(BIMBase|当前工程|未知|未分类|未填写|未识别)/.test(value) && values.indexOf(value) === index);
 }
 
-function complianceAnswer(snapshot) {
-  const result = snapshot.result || {};
+function complianceAnswer(snapshot, scope = 'auto') {
+  const useProject = scope === 'project';
+  const result = useProject ? (snapshot.projectCompliance || {}) : (snapshot.result || {});
+  if (useProject) {
+    const summary = result.summary || {};
+    if (result.status === 'PASS') return `整体工程快照共 ${summary.total || 0} 个构件，已审核机器规则全部通过。仍需结合完整工况和规范原页复核。`;
+    if (result.status === 'FAIL') return `整体工程存在 ${summary.fail || 0} 个不符合构件；请在构件医生中逐项查看失败规则、实际值和规范条文。`;
+    if (result.status === 'NEED_DATA') return `整体工程有 ${summary.needData || 0} 个构件缺少规则所需数据，当前不能判定整体合格。`;
+    return `整体工程共识别 ${summary.total || 0} 个构件，其中 ${summary.needRule || 0} 个尚无适用的已审核机器规则，不能判断整体合格。`;
+  }
   if (result.status === 'PASS') return '基于当前已审核的机器规则，本次检查通过。仍应结合完整设计工况和规范原页进行最终复核。';
   if (result.status === 'FAIL') return `本次检查不符合已审核规则：${(result.issues || []).filter((issue) => issue.status === 'FAIL').map((issue) => `${issue.title || issue.ruleId}，实际 ${issue.actual}，要求 ${issue.expected}`).join('；')}`;
   if (result.status === 'NEED_DATA') return '当前缺少规则所需的项目或构件参数，无法判定是否合格。请先补齐结果中标记为 NEED_DATA 的字段。';
@@ -420,7 +450,12 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (request.method === 'GET' && pathname === '/api/bim-doctor/snapshot') {
-        json(response, 200, await bimDoctor.latestSnapshot(url.searchParams.get('entityId') || ''));
+        json(response, 200, await bimDoctor.latestSnapshot(url.searchParams.get('entityId') || '', url.searchParams.get('scope') || 'auto'));
+        return;
+      }
+      if (request.method === 'GET' && pathname === '/api/bim-doctor/profile') {
+        const snapshot = await bimDoctor.latestSnapshot('', 'project');
+        json(response, 200, { project: snapshot.project, profile: snapshot.projectProfile, bridge: snapshot.bridge });
         return;
       }
       if (request.method === 'GET' && pathname === '/api/bim-doctor/context') {
@@ -439,11 +474,14 @@ const server = http.createServer(async (request, response) => {
         const snapshot = body.jobId ? await bimDoctor.readJob(body.jobId).then(async (job) => {
           const result = (job.results || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.results?.[0] || null;
           const component = (job.components || []).find((item) => String(item.entityId) === String(body.entityId || '')) || job.components?.[0] || null;
-          return { bridge: await bimDoctor.getBridgeState(), job: bimDoctor.jobView(job), project: job.project, component, result };
+          const profile = bimDoctor.projectProfile(job);
+          return { bridge: await bimDoctor.getBridgeState(), job: bimDoctor.jobView(job), project: job.project, projectProfile: profile, projectCompliance: profile.compliance, component, result };
         }) : await bimDoctor.latestSnapshot(body.entityId || '');
-        const compliance = snapshot.result ? { status: snapshot.result.status, summary: snapshot.result.summary, issues: snapshot.result.issues || [] } : { status: 'NEED_RULE', summary: '暂无项目检查结果', issues: [] };
+        const scope = doctorQuestionScope(question);
+        const scopedCompliance = scope === 'project' ? snapshot.projectCompliance : snapshot.result;
+        const compliance = scopedCompliance ? { status: scopedCompliance.status, summary: scopedCompliance.summary, issues: scopedCompliance.issues || [] } : { status: 'NEED_RULE', summary: '暂无项目检查结果', issues: [] };
         if (/(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
-          json(response, 200, { answer: complianceAnswer(snapshot), sources: snapshot.result?.sources || [], documents: [], suggestions: [], mode: 'rule-engine', compliance, snapshot });
+          json(response, 200, { answer: complianceAnswer(snapshot, scope), sources: scope === 'project' ? [] : (snapshot.result?.sources || []), documents: [], suggestions: [], mode: 'rule-engine', compliance, snapshot });
           return;
         }
         const terms = doctorContextTerms(snapshot);
@@ -516,7 +554,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         if (request.method === 'GET' && action === 'results') {
-          json(response, 200, bimDoctor.jobView(await bimDoctor.readJob(id), false, true));
+          json(response, 200, bimDoctor.jobView(await bimDoctor.readJob(id), true, true));
           return;
         }
         if (request.method === 'GET' && !action) {

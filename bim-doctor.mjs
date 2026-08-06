@@ -15,6 +15,11 @@ function text(value) {
   return String(value ?? '').trim();
 }
 
+function semanticText(value) {
+  const valueText = text(value);
+  return /^(默认|未知|未定义|未识别|无|N\/A|BIMBase构件)$/i.test(valueText) ? '' : valueText;
+}
+
 function getField(object, field) {
   return text(field).split('.').filter(Boolean).reduce((value, key) => value?.[key], object);
 }
@@ -98,6 +103,76 @@ function complianceContext(project, component) {
   ].map(text).filter(Boolean).join(' ');
 }
 
+function propertyValue(component, aliases) {
+  const sources = [component.rawProperties || {}, component.parameters || {}, component.extendedProperties || {}];
+  for (const source of sources) {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) continue;
+    const folded = new Map(Object.entries(source).map(([key, value]) => [text(key).toLowerCase(), value]));
+    for (const alias of aliases) {
+      const value = folded.get(text(alias).toLowerCase());
+      if (value !== undefined && value !== null && text(value)) return value;
+    }
+  }
+  return null;
+}
+
+function mappingMatchesComponent(mapping, component) {
+  const condition = mapping.when ?? mapping.match;
+  if (!condition) return false;
+  if (typeof condition === 'string') {
+    const candidates = [component.entityId, component.modelId, component.elementId, component.schemaName, component.levelName,
+      component.semanticType, component.componentTypeRaw, component.systemType, component.assemblyType]
+      .map((value) => text(value).toLowerCase()).filter(Boolean);
+    return candidates.some((value) => value === text(condition).toLowerCase() || value.includes(text(condition).toLowerCase()));
+  }
+  if (typeof condition !== 'object' || Array.isArray(condition)) return false;
+  return Object.entries(condition).every(([field, expected]) => {
+    const actual = getField(component, field) ?? component[field] ?? propertyValue(component, [field]);
+    const values = Array.isArray(expected) ? expected : [expected];
+    return values.some((value) => text(actual).toLowerCase() === text(value).toLowerCase());
+  });
+}
+
+function normalizeComponent(component, project = {}) {
+  const normalized = { ...component };
+  const mappings = Array.isArray(project.componentMappings) ? project.componentMappings : [];
+  const mapping = mappings.find((item) => item.enabled !== false && mappingMatchesComponent(item, normalized));
+  const explicitType = semanticText(normalized.semanticType || (normalized.componentType === 'BIMBase构件' ? '' : normalized.componentType) ||
+    propertyValue(normalized, ['语义类型', '专业类型', '构件类型', '类别', 'Category', 'SemanticType']));
+  normalized.semanticType = semanticText(mapping?.semanticType || mapping?.componentType || explicitType) || null;
+  normalized.componentType = normalized.semanticType;
+  normalized.systemType = semanticText(mapping?.systemType || normalized.systemType || normalized.system ||
+    propertyValue(normalized, ['系统类型', '所属系统', '系统', 'SystemType'])) || null;
+  normalized.assemblyType = semanticText(mapping?.assemblyType || normalized.assemblyType || normalized.assembly ||
+    propertyValue(normalized, ['整体组件类型', '所属组件', '组件类型', 'AssemblyType'])) || null;
+  normalized.role = semanticText(mapping?.role || normalized.role || normalized.function ||
+    propertyValue(normalized, ['作用', '用途', '功能', 'Function', 'Role'])) || null;
+  normalized.material = semanticText(mapping?.material || normalized.material || normalized.parameters?.material ||
+    propertyValue(normalized, ['材料', '材质', 'Material'])) || null;
+  normalized.classification = {
+    status: normalized.semanticType && normalized.systemType ? 'classified' :
+      (normalized.semanticType || normalized.systemType || normalized.assemblyType ? 'partial' : 'unclassified'),
+    source: mapping ? `project-mapping:${text(mapping.id) || 'unnamed'}` : 'bim-properties',
+    shapeNameUsed: false
+  };
+  return normalized;
+}
+
+function groupComponents(components, field, unknownLabel) {
+  const groups = new Map();
+  for (const component of components) {
+    const name = text(component[field]) || unknownLabel;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(component.entityId);
+  }
+  return [...groups.entries()].map(([name, entityIds]) => ({
+    name,
+    count: entityIds.length,
+    entityIds: entityIds.slice(0, 30),
+    truncated: entityIds.length > 30
+  })).sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-CN'));
+}
+
 function formatExpected(rule) {
   if (rule.operator === 'exists') return '必须提供';
   const suffix = rule.unit || '';
@@ -155,18 +230,86 @@ export class BimDoctor {
     }
   }
 
-  async latestSnapshot(entityId = '') {
-    const jobs = await this.listJobs(1);
-    if (!jobs.length) return { bridge: await this.getBridgeState(), job: null, project: null, component: null, result: null };
-    const job = await this.readJob(jobs[0].id);
-    const index = text(entityId) ? job.components.findIndex((component) => text(component.entityId) === text(entityId)) : 0;
-    const selectedComponent = index >= 0 ? job.components[index] : null;
-    const selectedResult = selectedComponent ? job.results.find((result) => text(result.entityId) === text(selectedComponent.entityId)) || null : null;
+  projectProfile(job) {
+    if (!job) return null;
+    const components = (job.components || []).map((component) => normalizeComponent(component, job.project));
+    const classified = components.filter((component) => component.classification.status === 'classified').length;
+    const partial = components.filter((component) => component.classification.status === 'partial').length;
+    const summary = job.summary || {};
+    const complianceStatus = summary.fail > 0 ? 'FAIL'
+      : summary.needData > 0 ? 'NEED_DATA'
+        : summary.needRule > 0 ? 'NEED_RULE'
+          : summary.total > 0 && summary.pass === summary.total ? 'PASS' : 'NEED_DATA';
     return {
-      bridge: await this.getBridgeState(),
-      job: this.jobView(job, false, false),
+      scope: 'project',
       project: job.project,
-      component: selectedComponent,
+      snapshotVersion: job.project?.snapshotVersion || null,
+      componentCount: components.length,
+      modelCount: new Set(components.map((component) => text(component.modelId)).filter(Boolean)).size,
+      systems: groupComponents(components, 'systemType', '未识别系统'),
+      assemblies: groupComponents(components, 'assemblyType', '未识别整体组件'),
+      componentTypes: groupComponents(components, 'semanticType', '未识别构件类型'),
+      materials: groupComponents(components, 'material', '未识别材质'),
+      dataQuality: { classified, partial, unclassified: components.length - classified - partial },
+      compliance: { status: complianceStatus, summary },
+      components: components.slice(0, 200).map((component) => ({
+        entityId: component.entityId,
+        modelId: component.modelId ?? null,
+        elementId: component.elementId ?? null,
+        systemType: component.systemType,
+        assemblyType: component.assemblyType,
+        semanticType: component.semanticType,
+        role: component.role,
+        material: component.material,
+        schemaName: component.schemaName || null,
+        className: component.componentTypeRaw || null,
+        levelName: component.levelName || null,
+        classification: component.classification
+      })),
+      truncated: components.length > 200
+    };
+  }
+
+  async latestSnapshot(entityId = '', scope = 'auto') {
+    const jobs = await this.listJobs(100);
+    const bridge = await this.getBridgeState();
+    if (!jobs.length) return { bridge, job: null, project: null, projectProfile: null, projectCompliance: null, component: null, result: null };
+    const projectKey = (job) => text(job.project?.path || job.project?.fileName || `${job.project?.source || 'BIMBase'}:${job.project?.name || ''}`);
+    const bridgeProjectKey = text(bridge.project?.path || bridge.project?.fileName || (bridge.project?.name && `BIMBase:${bridge.project.name}`));
+    let projectView = jobs.find((job) => job.project?.checkScope === 'project' && (!bridgeProjectKey || projectKey(job) === bridgeProjectKey))
+      || (bridgeProjectKey ? jobs.find((job) => projectKey(job) === bridgeProjectKey) : null)
+      || jobs.find((job) => job.project?.checkScope === 'project') || jobs[0];
+    const requestedEntity = text(entityId || (scope !== 'project' ? bridge.entityId : ''));
+    let componentView = requestedEntity
+      ? jobs.find((job) => job.project?.checkScope === 'component' && text(job.project?.targetEntityId) === requestedEntity)
+      : jobs.find((job) => job.project?.checkScope === 'component' && projectKey(job) === projectKey(projectView));
+    if (!componentView) {
+      componentView = jobs.find((job) => job.project?.checkScope === 'component' && projectKey(job) === projectKey(projectView));
+    }
+    if (componentView && projectKey(componentView) !== projectKey(projectView)) {
+      projectView = jobs.find((job) => job.project?.checkScope === 'project' && projectKey(job) === projectKey(componentView)) || componentView;
+    }
+    let projectJob = await this.readJob(projectView.id);
+    let componentJob = componentView ? await this.readJob(componentView.id) : null;
+    let selectedComponent = null;
+    let selectedResult = null;
+    if (componentJob) {
+      selectedComponent = componentJob.components.find((component) => !requestedEntity || text(component.entityId) === requestedEntity) || componentJob.components[0] || null;
+      selectedResult = selectedComponent ? componentJob.results.find((result) => text(result.entityId) === text(selectedComponent.entityId)) || null : null;
+    }
+    if (!selectedComponent && requestedEntity) {
+      selectedComponent = projectJob.components.find((component) => text(component.entityId) === requestedEntity) || null;
+      selectedResult = selectedComponent ? projectJob.results.find((result) => text(result.entityId) === requestedEntity) || null : null;
+    }
+    const activeJob = scope === 'project' || !componentJob ? projectJob : componentJob;
+    const profile = this.projectProfile(projectJob);
+    return {
+      bridge,
+      job: this.jobView(activeJob, false, false),
+      project: projectJob.project,
+      projectProfile: profile,
+      projectCompliance: profile?.compliance || null,
+      component: selectedComponent ? normalizeComponent(selectedComponent, projectJob.project) : null,
       result: selectedResult
     };
   }
@@ -244,7 +387,17 @@ export class BimDoctor {
     const current = await this.getContextMappings();
     const normalized = mappings.map((mapping, index) => {
       if (!text(mapping.match)) throw httpError(`第 ${index + 1} 条工程映射缺少 match`);
-      return { enabled: mapping.enabled !== false, id: text(mapping.id) || `context-${index + 1}`, ...mapping, match: text(mapping.match) };
+      if (mapping.componentMappings !== undefined && !Array.isArray(mapping.componentMappings)) {
+        throw httpError(`第 ${index + 1} 条工程映射的 componentMappings 必须是数组`);
+      }
+      const componentMappings = (mapping.componentMappings || []).map((item, componentIndex) => {
+        if (!item || (!item.when && !item.match)) throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少 when`);
+        if (!['semanticType', 'componentType', 'systemType', 'assemblyType', 'role', 'material'].some((field) => text(item[field]))) {
+          throw httpError(`第 ${index + 1} 条工程映射中的第 ${componentIndex + 1} 条构件映射缺少分类结果`);
+        }
+        return { enabled: item.enabled !== false, id: text(item.id) || `component-${componentIndex + 1}`, ...item };
+      });
+      return { enabled: mapping.enabled !== false, id: text(mapping.id) || `context-${index + 1}`, ...mapping, match: text(mapping.match), componentMappings };
     });
     const document = { schemaVersion: 1, revision: current.revision + 1, updatedAt: new Date().toISOString(), mappings: normalized };
     await fs.writeFile(`${this.contextFile}.tmp`, JSON.stringify(document, null, 2));
@@ -382,7 +535,7 @@ export class BimDoctor {
     for (const component of components) {
       const entityId = text(component.entityId);
       if (!entityId) throw httpError('构件缺少 entityId');
-      byId.set(entityId, { ...component, entityId });
+      byId.set(entityId, normalizeComponent({ ...component, entityId }, job.project));
     }
     job.components = [...byId.values()];
     if (!text(job.project?.checkScope) && components.length) {
