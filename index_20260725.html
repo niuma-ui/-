@@ -1055,7 +1055,8 @@
         section.hidden = false;
         $('doctorProjectIdentity').textContent = [project.name, project.type, project.discipline, project.stage].filter(Boolean).join(' · ') || '未识别';
         $('doctorProjectSystems').textContent = groups(profile.systems);
-        $('doctorProjectAssemblies').textContent = groups(profile.assemblies);
+        var knownAssemblies = (profile.assemblies || []).filter(function (item) { return item.name !== '未识别整体组件'; });
+        $('doctorProjectAssemblies').textContent = groups(knownAssemblies.length ? knownAssemblies : profile.modelGroups);
         $('doctorProjectTypes').textContent = groups(profile.componentTypes);
         $('doctorProjectMaterials').textContent = groups(profile.materials);
         var quality = profile.dataQuality || {};

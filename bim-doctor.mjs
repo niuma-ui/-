@@ -173,6 +173,17 @@ function groupComponents(components, field, unknownLabel) {
   })).sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-CN'));
 }
 
+function groupModels(components) {
+  const groups = new Map();
+  for (const component of components) {
+    const modelId = text(component.modelId) || 'unknown';
+    groups.set(modelId, (groups.get(modelId) || 0) + 1);
+  }
+  return [...groups.entries()]
+    .map(([modelId, count]) => ({ modelId: modelId === 'unknown' ? null : modelId, name: modelId === 'unknown' ? '未识别模型' : `模型 ${modelId}`, count }))
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, 'zh-CN'));
+}
+
 function formatExpected(rule) {
   if (rule.operator === 'exists') return '必须提供';
   const suffix = rule.unit || '';
@@ -246,6 +257,7 @@ export class BimDoctor {
       snapshotVersion: job.project?.snapshotVersion || null,
       componentCount: components.length,
       modelCount: new Set(components.map((component) => text(component.modelId)).filter(Boolean)).size,
+      modelGroups: groupModels(components),
       systems: groupComponents(components, 'systemType', '未识别系统'),
       assemblies: groupComponents(components, 'assemblyType', '未识别整体组件'),
       componentTypes: groupComponents(components, 'semanticType', '未识别构件类型'),

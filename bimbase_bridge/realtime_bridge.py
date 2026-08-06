@@ -12,15 +12,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bridge
 
 
+def packed_entity_parts(value):
+    try:
+        packed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if packed <= 0xFFFFFFFF:
+        return None
+    return packed >> 32, packed & 0xFFFFFFFF
+
+
 def panel_component(raw):
     entity = bridge.first_value(raw, ("构件ID", "实体ID", "EntityId", "entityId"))
     if entity in (None, ""):
         return None
     name = bridge.first_value(raw, bridge.ALIASES["name"]) or "BIMBase构件"
+    parts = packed_entity_parts(entity)
     component = {
-        "entityId": "ui:%s" % entity,
-        "modelId": None,
-        "elementId": str(entity),
+        "entityId": "%s:%s" % parts if parts else "ui:%s" % entity,
+        "modelId": parts[0] if parts else None,
+        "elementId": parts[1] if parts else str(entity),
         "name": name,
         "shapeName": name,
         "componentType": bridge.first_value(raw, ("构件类型", "类别", "分类", "ComponentType")),

@@ -33,6 +33,7 @@ await doctor.addComponents(mappedJob.id, [{ entityId: '10:1', modelId: 10, name:
 const mappedProfile = doctor.projectProfile(await doctor.readJob(mappedJob.id));
 assert.equal(mappedProfile.systems[0].name, '输水系统');
 assert.equal(mappedProfile.componentTypes[0].name, '检修闸门');
+assert.deepEqual(mappedProfile.modelGroups, [{ modelId: '10', name: '模型 10', count: 1 }]);
 assert.equal(mappedProfile.components[0].role, '检修隔断');
 assert.equal(mappedProfile.components[0].classification.shapeNameUsed, false);
 await assert.rejects(() => doctor.setRules([{

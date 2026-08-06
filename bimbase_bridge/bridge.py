@@ -266,6 +266,25 @@ def project_entity_ids(sdk, scope):
         if is_entity_id(entity_id):
             unique[object_token(entity_id)] = entity_id
 
+    # Relation APIs expose one reference/root entity per attached model. Expand each
+    # model to its real leaf entities so a project check does not mistake four roots
+    # for the complete project.
+    model_roots = {}
+    for entity_id in list(unique.values()):
+        model_roots[safe_attr(entity_id, "_ModelId")] = entity_id
+    for model_number, root_entity in model_roots.items():
+        if model_number is None:
+            continue
+        try:
+            model_id = sdk.get_modelid_from_entityid(root_entity)
+            model_entities = sdk.get_entityid_by_modelid(model_id)
+            probes.append("expand_model %s ok %s" % (model_number, describe_values(model_entities)))
+            for entity_id in value_list(model_entities):
+                if is_entity_id(entity_id):
+                    unique[object_token(entity_id)] = entity_id
+        except Exception as error:
+            probes.append("expand_model %s error %s" % (model_number, error))
+
     probe_log = os.environ.get("BIM_DOCTOR_PROBE_LOG")
     if probe_log:
         try:
@@ -311,36 +330,8 @@ def base_component(entity_id):
 
 
 def entity_property_metadata(sdk, entity_ids):
-    """Read official lightweight entity metadata in one call; no geometry APIs are used."""
-    try:
-        values = sdk.get_entity_property(target=entity_ids)
-    except Exception as error:
-        extraction_log("get_entity_property batch error %s" % error)
-        return {}
-    result = {}
-    for value in value_list(values):
-        read = lambda name: value.get(name) if isinstance(value, dict) else safe_attr(value, name)
-        model_id = read("model_id")
-        entity_id = read("entity_id")
-        if is_entity_id(entity_id):
-            token = object_token(entity_id)
-        else:
-            model_number = safe_attr(model_id, "_ModelId") if is_model_id(model_id) else model_id
-            token = "%s:%s" % (model_number, entity_id) if model_number is not None and entity_id is not None else None
-        if not token:
-            continue
-        result[token] = {
-            "schemaName": read("schemaname"),
-            "componentTypeRaw": read("classname"),
-            "levelName": read("levelname"),
-            "display": {
-                "color": read("entity_color"),
-                "weight": read("entity_weight"),
-                "style": read("entity_style")
-            }
-        }
-    extraction_log("get_entity_property batch done values=%d mapped=%d" % (len(value_list(values)), len(result)))
-    return result
+    """The installed SDK's get_entity_property filters entities and returns IDs only."""
+    return {}
 
 
 def enrich_component_details(sdk, entity_id, component):
@@ -405,7 +396,6 @@ def extract_components(scope="all"):
         runtime_ids[entity_token] = entity_id
         component = base_component(entity_id)
         component.update(metadata.get(entity_token, {}))
-        extraction_log("component %s: base captured" % entity_token)
         if read_details:
             component = enrich_component_details(sdk, entity_id, component)
         components.append(component)
