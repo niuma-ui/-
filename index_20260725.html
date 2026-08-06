@@ -405,7 +405,7 @@
       var assistantBusy = false;
       function assistantApiRoot() {
         if (typeof window.knowledgeApiRoot === 'string') return window.knowledgeApiRoot;
-        return window.location.protocol === 'file:' ? 'http://127.0.0.1:4173' : '';
+        return window.location.protocol === 'file:' ? 'http://127.0.0.1:4174' : '';
       }
       function assistantSessionId(value) {
         var key = 'design-knowledge-session';
@@ -1006,7 +1006,8 @@
       var jobs = [];
       var $ = function (id) { return document.getElementById(id); };
       var esc = function (value) { return String(value == null ? '' : value).replace(/[&<>\"']/g, function (char) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[char]; }); };
-      var api = function (path) { return fetch(path, { headers: { 'X-BIM-Bridge-Token': '' } }).then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); }); };
+      var apiRoot = window.location.protocol === 'file:' ? 'http://127.0.0.1:4174' : '';
+      var api = function (path) { return fetch(apiRoot + path, { headers: { 'X-BIM-Bridge-Token': '' } }).then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); }); };
       function setService(text, tone) { $('doctorServiceStatus').className = 'doctor-service-status ' + (tone || ''); $('doctorServiceStatus').querySelector('span').textContent = text; $('doctorNavStatus').textContent = tone === 'ready' ? '已连接' : '待连接'; }
       function renderJobs() {
         $('doctorJobCount').textContent = jobs.length + ' 项';
