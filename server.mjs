@@ -306,6 +306,10 @@ async function handleStreamingQuery(request, response) {
   if (!apiReady(request, response)) return;
   const body = await readJson(request);
   const question = validateQuestion(body);
+  const snapshot = body.bimSnapshot && (body.bimSnapshot.project || body.bimSnapshot.job)
+    ? body.bimSnapshot
+    : await bimDoctor.latestSnapshot();
+  const hasBimContext = snapshot && doctorContextTerms(snapshot).length > 0;
   const session = getSession(body.sessionId || request.headers['x-knowledge-session']);
   const abortController = new AbortController();
   response.on('close', () => {
@@ -322,7 +326,17 @@ async function handleStreamingQuery(request, response) {
 
   writeEvent('start', { sessionId: session.id });
   try {
-    const result = await knowledge.answerStream(question, {
+    if (snapshot && snapshot.result && /(是否|符合|合规|达标|满足.*规范|合不合)/.test(question)) {
+      const compliance = { status: snapshot.result.status, summary: snapshot.result.summary, issues: snapshot.result.issues || [] };
+      const answer = complianceAnswer(snapshot);
+      await Promise.resolve(writeEvent('meta', { sources: snapshot.result.sources || [], documents: [], suggestions: [], resolvedQuestion: question }));
+      await Promise.resolve(writeEvent('delta', { delta: answer }));
+      remember(session, question, { answer, sources: snapshot.result.sources || [], documents: [], suggestions: [], mode: 'rule-engine', resolvedQuestion: question, compliance });
+      writeEvent('done', { sessionId: session.id, mode: 'rule-engine', model: null, warning: null, sources: snapshot.result.sources || [], documents: [], suggestions: [], resolvedQuestion: question, compliance });
+      return;
+    }
+    const contextualQuestion = hasBimContext ? doctorContextPrompt(snapshot, question) : question;
+    const result = await knowledge.answerStream(contextualQuestion, {
       history: session.turns,
       signal: abortController.signal,
       onMeta: async (payload) => writeEvent('meta', payload),
