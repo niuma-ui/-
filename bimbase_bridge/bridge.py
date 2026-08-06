@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import argparse
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -134,6 +135,16 @@ def detect_project_context(config):
         "discipline": config.get("discipline"),
         "stage": config.get("stage")
     }
+
+
+def check_fingerprint(project, components, rules):
+    payload = {
+        "project": project,
+        "components": components,
+        "rules": rules
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def safe_call(function, *args):
@@ -405,8 +416,25 @@ class ApiClient(object):
 
 def send_job(config, components):
     client = ApiClient(config["serverUrl"], config.get("token", ""), config.get("timeout", 120))
+    project = dict(detect_project_context(config), source="BIMBase", sourceVersion="2025")
+    try:
+        rules = client.request("GET", "/api/bim-doctor/rules").get("rules", [])
+    except Exception:
+        rules = []
+    project["checkFingerprint"] = check_fingerprint(project, components, rules)
+    if config.get("dedupeChecks", True):
+        try:
+            jobs = client.request("GET", "/api/bim-doctor/jobs?limit=100").get("jobs", [])
+            for existing in jobs:
+                if existing.get("project", {}).get("checkFingerprint") == project["checkFingerprint"]:
+                    existing_id = existing.get("id")
+                    if existing_id:
+                        print("检测内容未变化，复用已有检查任务：%s" % existing_id)
+                        return client.request("GET", "/api/bim-doctor/jobs/%s/results" % existing_id)
+        except Exception:
+            pass
     job = client.request("POST", "/api/bim-doctor/jobs", {
-        "project": dict(detect_project_context(config), source="BIMBase", sourceVersion="2025")
+        "project": project
     })
     batch_size = max(1, int(config.get("batchSize", 200)))
     for start in range(0, len(components), batch_size):

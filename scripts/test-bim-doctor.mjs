@@ -43,6 +43,11 @@ await doctor.addComponents(shapeOnlyJob.id, [
 ]);
 const shapeOnlyResult = await doctor.runJob(shapeOnlyJob.id);
 assert.equal(shapeOnlyResult.results[0].status, 'NEED_RULE');
+const duplicateProjectJob = await doctor.createJob({ project: { name: '变电设备', type: '电气设备' } });
+const dedupedJobs = await doctor.listJobs();
+assert.equal(dedupedJobs.length, 2);
+assert.equal(dedupedJobs.some((item) => item.id === duplicateProjectJob.id), true);
+assert.equal(dedupedJobs.some((item) => item.id === shapeOnlyJob.id), false);
 const jobs = await doctor.listJobs();
 assert.equal(jobs.length, 2);
 assert.ok(jobs.some((item) => item.id === job.id));

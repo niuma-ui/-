@@ -291,8 +291,13 @@ export class BimDoctor {
         // Skip incomplete files left by an interrupted write.
       }
     }
-    return jobs
-      .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))
+    const latestByProject = new Map();
+    for (const job of jobs.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))) {
+      const project = job.project || {};
+      const identity = text(project.path || project.fileName || `${project.source || 'BIMBase'}:${project.name || job.id}`);
+      if (!latestByProject.has(identity)) latestByProject.set(identity, job);
+    }
+    return [...latestByProject.values()]
       .slice(0, Math.max(1, Math.min(Number(limit) || 20, 100)))
       .map((job) => this.jobView(job));
   }
